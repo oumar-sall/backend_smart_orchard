@@ -7,6 +7,7 @@ const errorHandler = require('./middlewares/errorHandler');
 const userRoutes = require('./routes/user.routes');
 
 const app = express();
+const tcpServer = require('./shared/tcpServer');
 
 app.use(cors());
 app.use(express.json());
@@ -24,4 +25,4 @@ sequelize.sync({ alter: true }).then(() => {
     });
 }).catch((err) => {
     console.error('Erreur de connexion à la base de données :', err);
-});
+});
