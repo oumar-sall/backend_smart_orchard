@@ -31,12 +31,20 @@ setInterval(async () => {
 }, 3600000); // 1 heure = 3600000 ms
 
 // ── Démarrage ────────────────────────────────────────────────────
-sequelize.sync({ alter: true }).then(() => {
+sequelize.sync({ alter: true }).then(async () => {
     console.log('Base de données synchronisée.');
-    
+
+    // On lance le seed au démarrage
+    const seed = require('./seed');
+    try {
+        await seed();
+    } catch (err) {
+        console.error('❌ Erreur lors du seed au démarrage :', err);
+    }
+
     // On ne démarre le serveur TCP qu'une fois la base prête
     const tcpServer = require('./shared/tcpServer');
-    
+
     app.listen(3000, () => {
         console.log('Serveur Backend démarré sur http://localhost:3000');
     });

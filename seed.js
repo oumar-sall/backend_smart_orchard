@@ -9,7 +9,7 @@ const {
     ActivityLog,
 } = require('./models');
 
-async function main() {
+async function seed() {
     console.log('🔄 Synchronisation de la base de données (FORCE: TRUE)...');
     await sequelize.sync({ force: true });
 
@@ -24,6 +24,7 @@ async function main() {
 
     // ── TON VRAI CONTRÔLEUR (GALILEOSKY) ──────────────────────────
     const ctrlReal = await Controller.create({
+        id: '57292f5e-01b3-4e44-8390-dbc319efd96b',
         imei: '865513072734987',
         name: 'Galileosky Verger Test',
     });
@@ -54,7 +55,7 @@ async function main() {
         pin_number: 'temp',
         label: 'Température Sol (RS485 - Tag FE)',
     });
-    
+
     // capteur humidité via Tag FE
     const sensorHumFE = await Component.create({
         controller_id: ctrlReal.id,
@@ -92,6 +93,19 @@ async function main() {
         label: 'Longitude',
     });
 
+    const sensorPH = await Component.create({
+        controller_id: ctrlReal.id,
+        type: 'sensor',
+        pin_number: 'ph',
+        label: 'Capteur PH Sol',
+    });
+
+    // ── Lectures Initiales (pour le Dashboard) ───────────────────
+    const now = new Date();
+    await Reading.create({ component_id: sensorTempRS485.id, value: 45, created_at: now });
+    await Reading.create({ component_id: sensorHumiditeRS485.id, value: 85, created_at: now });
+    await Reading.create({ component_id: sensorPH.id, value: 6.8, created_at: now });
+
     // ── Paramètres & Accès ───────────────────────────────────────
     await Setting.create({
         component_id: pumpVerger.id,
@@ -115,6 +129,4 @@ async function main() {
     console.log('\n🌱 Base de données prête pour le RS485 !');
 }
 
-main()
-    .catch((e) => console.error('❌ Erreur seed :', e))
-    .finally(async () => await sequelize.close());
+module.exports = seed;
