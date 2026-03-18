@@ -9,8 +9,8 @@ const {
     ActivityLog,
 } = require('./models');
 
-async function main() {
-    console.log('🔄 Synchronisation de la base de données...');
+async function seed() {
+    console.log('🔄 Synchronisation de la base de données (FORCE: TRUE)...');
     await sequelize.sync({ force: true });
 
     // ── Utilisateurs ─────────────────────────────────────────────
@@ -22,136 +22,111 @@ async function main() {
         last_name: 'Sacko',
     });
 
-    const amina = await User.create({
-        email: 'amina@agrotech.com',
-        password: 'password456',
-        phone: '+22300000001',
-        first_name: 'Amina',
-        last_name: 'Diallo',
+    // ── TON VRAI CONTRÔLEUR (GALILEOSKY) ──────────────────────────
+    const ctrlReal = await Controller.create({
+        id: '57292f5e-01b3-4e44-8390-dbc319efd96b',
+        imei: '865513072734987',
+        name: 'Galileosky Verger Test',
     });
 
-    console.log(`✅ Utilisateurs créés : ${lamine.first_name}, ${amina.first_name}`);
+    console.log(`✅ Contrôleur réel créé : ${ctrlReal.name}`);
 
-    // ── Contrôleurs ──────────────────────────────────────────────
-    const ctrl1 = await Controller.create({
-        imei: '352099001761481',
-        name: 'Contrôleur Parcelle Nord',
-    });
-
-    const ctrl2 = await Controller.create({
-        imei: '352099001761482',
-        name: 'Contrôleur Parcelle Sud',
-    });
-
-    console.log(`✅ Contrôleurs créés : ${ctrl1.name}, ${ctrl2.name}`);
-
-    // ── Composants (capteurs & actionneurs) ──────────────────────
-    // Parcelle Nord
-    const sensorTemp = await Component.create({
-        controller_id: ctrl1.id,
+    // ── COMPOSANTS RS485 (MODBUS) ────────────────────────────────
+    // modbus0 correspond au tag 0x90 (Temperature ds tcpServer.js)
+    const sensorTempRS485 = await Component.create({
+        controller_id: ctrlReal.id,
         type: 'sensor',
-        pin_number: 'D2',
-        label: 'Capteur température sol',
+        pin_number: 'modbus0',
+        label: 'Température Air (RS485)',
     });
 
-    const sensorHumidity = await Component.create({
-        controller_id: ctrl1.id,
+    // modbus1 correspond au tag 0x91 (Humidité ds tcpServer.js)
+    const sensorHumiditeRS485 = await Component.create({
+        controller_id: ctrlReal.id,
         type: 'sensor',
-        pin_number: 'D3',
-        label: 'Capteur humidité sol',
+        pin_number: 'modbus1',
+        label: 'Humidité Sol (RS485)',
     });
 
-    const pumpNorth = await Component.create({
-        controller_id: ctrl1.id,
+    // capteur de temp via Tag FE
+    const sensorTempFE = await Component.create({
+        controller_id: ctrlReal.id,
+        type: 'sensor',
+        pin_number: 'temp',
+        label: 'Température Sol (RS485 - Tag FE)',
+    });
+
+    // capteur humidité via Tag FE
+    const sensorHumFE = await Component.create({
+        controller_id: ctrlReal.id,
+        type: 'sensor',
+        pin_number: 'hum',
+        label: 'Humidité Air (RS485 - Tag FE)',
+    });
+
+    // ── AUTRES COMPOSANTS ────────────────────────────────────────
+    const sensorBattery = await Component.create({
+        controller_id: ctrlReal.id,
+        type: 'sensor',
+        pin_number: 'VBAT',
+        label: 'Batterie interne',
+    });
+
+    const pumpVerger = await Component.create({
+        controller_id: ctrlReal.id,
         type: 'actuator',
-        pin_number: 'D5',
-        label: 'Pompe irrigation Nord',
+        pin_number: 'OUT0',
+        label: 'Pompe principale',
     });
 
-    // Parcelle Sud
-    const sensorLight = await Component.create({
-        controller_id: ctrl2.id,
+    // GPS (Labels obligatoires pour ton code TCP actuel)
+    await Component.create({
+        controller_id: ctrlReal.id,
         type: 'sensor',
-        pin_number: 'A0',
-        label: 'Capteur luminosité',
+        pin_number: 'GPS_LAT',
+        label: 'Latitude',
+    });
+    await Component.create({
+        controller_id: ctrlReal.id,
+        type: 'sensor',
+        pin_number: 'GPS_LON',
+        label: 'Longitude',
     });
 
-    const pumpSouth = await Component.create({
-        controller_id: ctrl2.id,
-        type: 'actuator',
-        pin_number: 'D6',
-        label: 'Pompe irrigation Sud',
+    const sensorPH = await Component.create({
+        controller_id: ctrlReal.id,
+        type: 'sensor',
+        pin_number: 'ph',
+        label: 'Capteur PH Sol',
     });
 
-    console.log(`✅ ${5} composants créés`);
-
-    // ── Relevés des capteurs ──────────────────────────────────────
+    // ── Lectures Initiales (pour le Dashboard) ───────────────────
     const now = new Date();
-    const readings = [];
-    for (let i = 0; i < 5; i++) {
-        const ts = new Date(now.getTime() - i * 15 * 60 * 1000); // toutes les 15 min
-        readings.push(
-            { component_id: sensorTemp.id,     value: 18.5 + i * 0.4, created_at: ts },
-            { component_id: sensorHumidity.id, value: 62.0 - i * 1.2, created_at: ts },
-            { component_id: sensorLight.id,    value: 780  + i * 10,  created_at: ts },
-        );
-    }
-    await Reading.bulkCreate(readings);
-    console.log(`✅ ${readings.length} relevés créés`);
+    await Reading.create({ component_id: sensorTempRS485.id, value: 45, created_at: now });
+    await Reading.create({ component_id: sensorHumiditeRS485.id, value: 85, created_at: now });
+    await Reading.create({ component_id: sensorPH.id, value: 6.8, created_at: now });
 
-    // ── Paramètres des actionneurs ────────────────────────────────
+    // ── Paramètres & Accès ───────────────────────────────────────
     await Setting.create({
-        component_id: pumpNorth.id,
+        component_id: pumpVerger.id,
         auto_mode: true,
-        threshold_min: 40.0,   // déclenche si humidité < 40 %
-        irrigation_duration: 300, // 5 minutes
+        threshold_min: 35.0, // Seuil sur l'humidité modbus0
+        irrigation_duration: 600,
     });
 
-    await Setting.create({
-        component_id: pumpSouth.id,
-        auto_mode: false,
-        threshold_min: 35.0,
-        irrigation_duration: 180,
+    await Access.create({ user_id: lamine.id, controller_id: ctrlReal.id });
+
+    console.log('\n--- VERIFICATION DES IDS ---');
+    console.log(`ID Contrôleur Real: ${ctrlReal.id}`);
+    const checkComps = await Component.findAll({ where: { controller_id: ctrlReal.id } });
+    console.log(`Nombre de composants liés: ${checkComps.length}`);
+    checkComps.forEach(c => {
+        if (c.controller_id !== ctrlReal.id) {
+            console.error(`❌ ERREUR: Composant ${c.label} a un controller_id DIFFERENT: ${c.controller_id}`);
+        }
     });
 
-    console.log(`✅ Paramètres actionneurs créés`);
-
-    // ── Accès utilisateurs → contrôleurs ─────────────────────────
-    await Access.create({ user_id: lamine.id, controller_id: ctrl1.id });
-    await Access.create({ user_id: lamine.id, controller_id: ctrl2.id });
-    await Access.create({ user_id: amina.id,  controller_id: ctrl1.id });
-
-    console.log(`✅ Accès utilisateurs créés`);
-
-    // ── Logs d'activité ──────────────────────────────────────────
-    await ActivityLog.bulkCreate([
-        {
-            controller_id: ctrl1.id,
-            user_id: lamine.id,
-            event_type: 'IRRIGATION_START',
-            description: 'Irrigation déclenchée automatiquement (humidité < seuil)',
-            timestamp: new Date(now.getTime() - 30 * 60 * 1000),
-        },
-        {
-            controller_id: ctrl1.id,
-            user_id: lamine.id,
-            event_type: 'IRRIGATION_STOP',
-            description: 'Irrigation arrêtée après 5 minutes',
-            timestamp: new Date(now.getTime() - 25 * 60 * 1000),
-        },
-        {
-            controller_id: ctrl2.id,
-            user_id: null,
-            event_type: 'SENSOR_ALERT',
-            description: 'Luminosité anormalement basse détectée',
-            timestamp: new Date(now.getTime() - 10 * 60 * 1000),
-        },
-    ]);
-
-    console.log(`✅ Logs d'activité créés`);
-    console.log('\n🌱 Base de données remplie avec succès !');
+    console.log('\n🌱 Base de données prête pour le RS485 !');
 }
 
-main()
-    .catch((e) => console.error('❌ Erreur seed :', e))
-    .finally(async () => await sequelize.close());
+module.exports = seed;

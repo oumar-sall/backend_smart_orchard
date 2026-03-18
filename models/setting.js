@@ -24,6 +24,10 @@ module.exports = (sequelize) => {
             type: DataTypes.INTEGER,
             allowNull: true,
         },
+        reporting_interval: {
+            type: DataTypes.INTEGER,
+            defaultValue: 30,
+        },
     }, {
         tableName: 'settings',
         timestamps: false,
