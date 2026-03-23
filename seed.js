@@ -72,18 +72,25 @@ async function seed() {
         label: 'Batterie interne',
     });
 
-    const pumpVerger = await Component.create({
+    const valveSecteur1 = await Component.create({
         controller_id: ctrlReal.id,
         type: 'actuator',
-        pin_number: 'OUT0',
-        label: 'Pompe principale',
+        pin_number: 'OUT 0',
+        label: 'Vanne Secteur 1 (CR202)',
     });
 
-    const valveSecteur = await Component.create({
+    const valveSecteur2 = await Component.create({
         controller_id: ctrlReal.id,
         type: 'actuator',
-        pin_number: 'OUT1',
-        label: 'Vanne Secteur (CR202)',
+        pin_number: 'OUT 1',
+        label: 'Vanne Secteur 2 (CR202)',
+    });
+
+    const valveSecteur3 = await Component.create({
+        controller_id: ctrlReal.id,
+        type: 'actuator',
+        pin_number: 'OUT 2',
+        label: 'Vanne Secteur 3 (CR202)',
     });
 
     // GPS (Labels obligatoires pour ton code TCP actuel)
@@ -115,7 +122,7 @@ async function seed() {
     for (let i = 0; i < 60; i++) {
         const date = new Date();
         date.setDate(date.getDate() - i);
-        
+
         // Simuler des variations légères
         const temp = 25 + Math.random() * 15; // 25-40°C
         const hum = 40 + Math.random() * 50;  // 40-90%
@@ -144,17 +151,27 @@ async function seed() {
 
     // ── Paramètres & Accès ───────────────────────────────────────
     await Setting.create({
-        component_id: pumpVerger.id,
+        component_id: valveSecteur1.id,
         auto_mode: true,
         threshold_min: 35.0, // Seuil sur l'humidité modbus0
         irrigation_duration: 600,
+        reporting_interval: 30,
     });
 
     await Setting.create({
-        component_id: valveSecteur.id,
+        component_id: valveSecteur2.id,
         auto_mode: true,
         threshold_min: 40.0,
         irrigation_duration: 300,
+        reporting_interval: 30,
+    });
+
+    await Setting.create({
+        component_id: valveSecteur3.id,
+        auto_mode: true,
+        threshold_min: 40.0,
+        irrigation_duration: 300,
+        reporting_interval: 30,
     });
 
     await Access.create({ user_id: lamine.id, controller_id: ctrlReal.id });

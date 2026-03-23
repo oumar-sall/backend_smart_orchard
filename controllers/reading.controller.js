@@ -1,4 +1,4 @@
-const { Reading, Component, ActivityLog, Controller, sequelize } = require('../models');
+const { Reading, Component, ActivityLog, Controller, Setting, sequelize } = require('../models');
 const { Op } = require('sequelize');
 
 const ReadingController = {
@@ -38,10 +38,25 @@ const ReadingController = {
                 if (temperature !== null && humidity !== null && ph !== null) break;
             }
 
+            // Fetch ALL actuators and their irrigation status
+            const allActuators = await Component.findAll({
+                where: { type: 'actuator' },
+                attributes: ['id', 'label', 'pin_number', 'timer_end']
+            });
+
+            const irrigationStatuses = allActuators.map(act => ({
+                id: act.id,
+                label: act.label,
+                pin: act.pin_number,
+                active: act.timer_end ? new Date(act.timer_end) > new Date() : false,
+                timerEnd: act.timer_end
+            }));
+
             res.json({
                 temperature: temperature || '--',
                 humidity: humidity || '--',
-                ph: ph || '--'
+                ph: ph || '--',
+                actuators: irrigationStatuses
             });
         } catch (err) {
             next(err);
@@ -52,7 +67,7 @@ const ReadingController = {
         try {
             const { period } = req.query;
             const daysToFetch = period === 'month' ? 30 : 7;
-            
+
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - daysToFetch);
             startDate.setHours(0, 0, 0, 0);
@@ -117,10 +132,10 @@ const ReadingController = {
             // 4. Calculate averages and format response
             const response = Object.values(historyMap).map((day, index, array) => {
                 const avg = (arr) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : '--';
-                
+
                 const currentAvgHum = avg(day.humValues);
                 let trend = 'stable';
-                
+
                 // Simple trend calculation compared to "next" day in array (which is actually the previous day chronologically)
                 if (index < array.length - 1) {
                     const prevDay = array[index + 1];
@@ -150,29 +165,77 @@ const ReadingController = {
 
     async toggleIrrigation(req, res, next) {
         try {
-            const { action } = req.body; // 'open' ou 'close'
-            const command = action === 'open' ? 'OUT 0,0' : 'OUT 0,1';
-            
+            const { action, componentId } = req.body;
+
+            // On récupère le composant pour connaître son pin_number
+            const component = await Component.findByPk(componentId, { include: [Setting] });
+            if (!component) {
+                console.error(`[Controller] Composant ID ${componentId} non trouvé`);
+                return res.status(404).json({ error: "Composant non trouvé" });
+            }
+
+            // Construction générique de la commande: PIN + "," + COMMANDE
+            const actionValue = action === 'open' ? '0' : '1';
+            const command = `${component.pin_number},${actionValue}`;
+
             // On récupère le contrôleur principal (pour l'IMEI)
-            const controller = await Controller.findOne({ order: [['id', 'ASC']] });
-            if (!controller) return res.status(404).json({ error: "Aucun contrôleur trouvé" });
+            const controller = await Controller.findOne({ where: { id: component.controller_id } });
+            if (!controller) {
+                console.error("[Controller] Aucun contrôleur trouvé pour ce composant");
+                return res.status(404).json({ error: "Contrôleur non trouvé" });
+            }
 
             const tcpServer = require('../shared/tcpServer');
             const success = tcpServer.sendCommand(controller.imei, command);
 
             if (success) {
-                // Logger l'activité
+                let timerEnd = null;
+                
+                if (action === 'open') {
+                    const irrigation_duration = (component.Setting && component.Setting.irrigation_duration) ? component.Setting.irrigation_duration : 300;
+                    timerEnd = new Date(Date.now() + irrigation_duration * 1000);
+                    
+                    await component.update({ timer_end: timerEnd });
+
+                    // Programmation de la fermeture automatique
+                    setTimeout(async () => {
+                        try {
+                            const freshComp = await Component.findByPk(component.id);
+                            if (freshComp && freshComp.timer_end && freshComp.timer_end.getTime() === timerEnd.getTime()) {
+                                    tcpServer.sendCommand(controller.imei, `${component.pin_number},1`);
+                                await freshComp.update({ timer_end: null });
+                                await ActivityLog.create({
+                                    controller_id: controller.id,
+                                    event_type: 'IRRIGATION',
+                                    description: `Fermeture automatique : ${component.label}`
+                                });
+                            }
+                        } catch (e) {
+                            console.error("[Timer] Erreur fermeture auto:", e);
+                        }
+                    }, irrigation_duration * 1000);
+                } else {
+                    await component.update({ timer_end: null });
+                }
+
                 await ActivityLog.create({
                     controller_id: controller.id,
                     event_type: 'IRRIGATION',
-                    description: `Arrosage manuel : ${action === 'open' ? 'Ouverture' : 'Fermeture'}`
+                    description: `${action === 'open' ? 'Ouverture' : 'Fermeture'} manuelle de : ${component.label}`
                 });
-                res.json({ success: true, message: `Commande ${command} envoyée` });
+
+                return res.json({ 
+                    success: true, 
+                    message: `Commande ${command} envoyée`,
+                    timerEnd: timerEnd
+                });
             } else {
-                res.status(503).json({ error: "Boîtier hors ligne" });
+                console.error("[Controller]sendCommand a échoué (boîtier déconnecté?)");
+                return res.status(503).json({ error: "Boîtier hors ligne" });
             }
         } catch (err) {
-            next(err);
+            console.error("[Controller] ERREUR FATALE dans toggleIrrigation:", err);
+            return res.status(500).json({ error: "Internal Server Error", details: err.message });
         }
     },
 
@@ -185,6 +248,19 @@ const ReadingController = {
             const isOnline = tcpServer.clients.has(controller.imei);
 
             res.json({ online: isOnline });
+        } catch (err) {
+            next(err);
+        }
+    },
+
+    async getActuators(req, res, next) {
+        try {
+            const actuators = await Component.findAll({
+                where: { type: 'actuator' },
+                attributes: ['id', 'label', 'pin_number'],
+                order: [['pin_number', 'ASC']]
+            });
+            res.json(actuators);
         } catch (err) {
             next(err);
         }
