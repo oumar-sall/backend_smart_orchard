@@ -100,11 +100,40 @@ async function seed() {
         label: 'Capteur PH Sol',
     });
 
-    // ── Lectures Initiales (pour le Dashboard) ───────────────────
-    const now = new Date();
-    await Reading.create({ component_id: sensorTempRS485.id, value: 45, created_at: now });
-    await Reading.create({ component_id: sensorHumiditeRS485.id, value: 85, created_at: now });
-    await Reading.create({ component_id: sensorPH.id, value: 6.8, created_at: now });
+    // ── Lectures Initiales (60 jours d'historique) ───────────────────
+    console.log('📊 Génération de 60 jours de données simulées...');
+    const readingsToCreate = [];
+    const logsToCreate = [];
+
+    for (let i = 0; i < 60; i++) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        
+        // Simuler des variations légères
+        const temp = 25 + Math.random() * 15; // 25-40°C
+        const hum = 40 + Math.random() * 50;  // 40-90%
+        const ph = 6.0 + Math.random() * 1.5; // 6.0-7.5
+
+        readingsToCreate.push({ component_id: sensorTempRS485.id, value: parseFloat(temp.toFixed(1)), created_at: date });
+        readingsToCreate.push({ component_id: sensorHumiditeRS485.id, value: parseFloat(hum.toFixed(1)), created_at: date });
+        readingsToCreate.push({ component_id: sensorPH.id, value: parseFloat(ph.toFixed(1)), created_at: date });
+
+        // Ajouter des arrosages aléatoires (0 à 4 par jour)
+        const wateringCount = Math.floor(Math.random() * 5);
+        for (let w = 0; w < wateringCount; w++) {
+            const logDate = new Date(date);
+            logDate.setHours(8 + w * 3, 0, 0, 0); // Étaler dans la journée
+            logsToCreate.push({
+                controller_id: ctrlReal.id,
+                event_type: 'IRRIGATION',
+                description: `Arrosage automatique #${w + 1}`,
+                timestamp: logDate
+            });
+        }
+    }
+
+    await Reading.bulkCreate(readingsToCreate);
+    await ActivityLog.bulkCreate(logsToCreate);
 
     // ── Paramètres & Accès ───────────────────────────────────────
     await Setting.create({
