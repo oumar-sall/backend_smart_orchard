@@ -5,20 +5,10 @@ const { Controller, Component, Reading, Setting } = require('../models');
 const TCP_PORT = process.env.TCP_PORT || 5000;
 const clients = new Map(); // IMEI -> Socket
 
-function logSensorData(imei, temp, hum) {
-    const time = new Date().toLocaleTimeString();
-    console.log(`
-    ┌──────────────────────────────────────────────────┐
-    │ 🕒 ${time} - IMEI: ${imei}
-    ├──────────────────────────────────────────────────┤
-    │ 🌡️  Température : ${temp.toFixed(1)}°C
-    │ 💧 Humidité     : ${hum.toFixed(1)}%
-    └──────────────────────────────────────────────────┘
-    `);
-}
+
 
 const server = net.createServer((socket) => {
-    console.log(`📡 Nouveau boîtier connecté : ${socket.remoteAddress}`);
+    // console.log(`📡 Nouveau boîtier connecté : ${socket.remoteAddress}`);
     socket.imei = null;
     socket.sessionBuffer = Buffer.alloc(0);
 
@@ -55,7 +45,7 @@ const server = net.createServer((socket) => {
                     if (data.imei) {
                         socket.imei = data.imei;
                         clients.set(socket.imei, socket);
-                        console.log(`[TCP] IMEI ${socket.imei} associé à cette session. Clients actifs: ${clients.size}`);
+                        // console.log(`[TCP] IMEI ${socket.imei} associé à cette session. Clients actifs: ${clients.size}`);
                     }
                     if (!socket.imei) continue;
 
@@ -63,7 +53,7 @@ const server = net.createServer((socket) => {
                     const finalHum = data.hum ?? data.temp2 ?? data.modbus1;
 
                     if (finalTemp !== undefined || finalHum !== undefined) {
-                        logSensorData(socket.imei, finalTemp || 0, finalHum || 0);
+                        // logSensorData(socket.imei, finalTemp || 0, finalHum || 0);
 
                         // Sauvegarde DB asynchrone
                         Controller.findOne({
@@ -90,7 +80,6 @@ const server = net.createServer((socket) => {
                                     let c = controller.Components.find(c => c.pin_number === tempPin);
                                     if (c) {
                                         await Reading.create({ component_id: c.id, value: finalTemp, created_at: recordDate });
-                                        console.log(`[DB] ✅ Température insérée: ${finalTemp}°C (pin: ${tempPin})`);
                                     } else {
                                         console.warn(`[DB] ⚠️ Composant '${tempPin}' introuvable pour ce contrôleur (Total comps: ${controller.Components ? controller.Components.length : 0})`);
                                         if (controller.Components) {
@@ -104,7 +93,6 @@ const server = net.createServer((socket) => {
                                     let c = controller.Components.find(c => c.pin_number === humPin);
                                     if (c) {
                                         await Reading.create({ component_id: c.id, value: finalHum, created_at: recordDate });
-                                        console.log(`[DB] ✅ Humidité insérée: ${finalHum}% (pin: ${humPin})`);
                                     } else {
                                         console.warn(`[DB] ⚠️ Composant '${humPin}' introuvable pour ce contrôleur (Total comps: ${controller.Components ? controller.Components.length : 0})`);
                                         if (controller.Components) {
@@ -216,6 +204,18 @@ function decodeGalileo(buffer) {
                 offset += 2;
                 break;
 
+            case 0xE0: // État des entrées (Inputs)
+                currentRecord.inputs = buffer.readUInt16LE(offset);
+                // On peut ensuite vérifier une entrée précise, ex: IN0
+                // const isIN0Active = (currentRecord.inputs & 0x01) !== 0;
+                offset += 2;
+                break;
+
+            case 0xE1: // État des sorties (Outputs)
+                currentRecord.outputs = buffer.readUInt16LE(offset);
+                offset += 2;
+                break;
+
             default:
                 if (tagSizes[tag] !== undefined) {
                     offset += tagSizes[tag];
@@ -232,7 +232,6 @@ function decodeGalileo(buffer) {
     if (Object.keys(currentRecord).length > 0) {
         records.push(currentRecord);
     }
-    console.log("Fin du while : ", records);
     return records;
 }
 

@@ -23,6 +23,10 @@ module.exports = (sequelize) => {
             type: DataTypes.STRING,
             allowNull: false,
         },
+        timer_end: {
+            type: DataTypes.DATE,
+            allowNull: true,
+        },
     }, {
         tableName: 'components',
         timestamps: false,
