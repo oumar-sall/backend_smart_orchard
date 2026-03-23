@@ -3,6 +3,7 @@ const net = require('net');
 const { Controller, Component, Reading, Setting } = require('../models');
 
 const TCP_PORT = process.env.TCP_PORT || 5000;
+const clients = new Map(); // IMEI -> Socket
 
 function logSensorData(imei, temp, hum) {
     const time = new Date().toLocaleTimeString();
@@ -44,9 +45,18 @@ const server = net.createServer((socket) => {
 
             try {
                 const records = decodeGalileo(trame);
+                // Analyse si la trame contient une réponse textuelle (Command ID 0x03 ou 0x04)
+                if (trame[3] === 0x03 || trame[3] === 0x04) {
+                    const responseText = trame.slice(4, trame.length - 2).toString();
+                    console.log(`[TCP] 📥 Réponse du boîtier ${socket.imei} : "${responseText}"`);
+                }
                 for (const data of records) {
                     // Si on trouve l'IMEI dans cette trame, on le mémorise pour la session
-                    if (data.imei) socket.imei = data.imei;
+                    if (data.imei) {
+                        socket.imei = data.imei;
+                        clients.set(socket.imei, socket);
+                        console.log(`[TCP] IMEI ${socket.imei} associé à cette session. Clients actifs: ${clients.size}`);
+                    }
                     if (!socket.imei) continue;
 
                     const finalTemp = data.temp ?? data.temp1 ?? data.modbus0;
@@ -56,18 +66,21 @@ const server = net.createServer((socket) => {
                         logSensorData(socket.imei, finalTemp || 0, finalHum || 0);
 
                         // Sauvegarde DB asynchrone
-                        Controller.findOne({ where: { imei: socket.imei }, include: [Component] })
+                        Controller.findOne({
+                            where: { imei: socket.imei },
+                            include: [{ model: Component }]
+                        })
                             .then(async (controller) => {
                                 if (!controller) {
                                     console.warn(`[DB] Contrôleur introuvable pour IMEI: ${socket.imei}`);
                                     return;
                                 }
-                                
+
                                 // Debug: voir les composants chargés
                                 if (!controller.Components || controller.Components.length === 0) {
                                     console.warn(`[DB] ⚠️ Aucun composant trouvé pour le contrôleur ${controller.name} (ID: ${controller.id})`);
                                 }
-                                
+
                                 // Conversion du timestamp (secondes depuis 01/01/1970) en Date valide pour MySql
                                 const recordDate = data.timestamp ? new Date(data.timestamp * 1000) : new Date();
 
@@ -108,6 +121,18 @@ const server = net.createServer((socket) => {
             cursor += trameSize;
         }
         if (cursor > 0) socket.sessionBuffer = socket.sessionBuffer.slice(cursor);
+    });
+
+    socket.on('close', () => {
+        if (socket.imei) {
+            clients.delete(socket.imei);
+            console.log(`📡 Déconnexion boîtier (IMEI: ${socket.imei}). Clients restants: ${clients.size}`);
+        }
+    });
+
+    socket.on('error', (err) => {
+        if (socket.imei) clients.delete(socket.imei);
+        console.error(`❌ Erreur socket (IMEI: ${socket.imei || 'Inconnu'}):`, err.message);
     });
 });
 
@@ -201,7 +226,6 @@ function decodeGalileo(buffer) {
                 }
                 break;
         }
-        // console.log("Fin du switch, trame décodée :", currentRecord);
     }
 
     // Ajout du dernier record collecté
@@ -212,4 +236,69 @@ function decodeGalileo(buffer) {
     return records;
 }
 
+/**
+ * Envoie une commande au boîtier via sa socket active
+ */
+function sendCommand(imei, command) {
+    const socket = clients.get(imei);
+    if (!socket) return false;
+
+    try {
+        // ON ENCAPSULE LA COMMANDE AVEC L'IMEI
+        const packet = packGalileoCommand(command, imei);
+        socket.write(packet);
+
+        console.log(`[TCP] 📤 Trame binaire envoyée à ${imei}: ${command}`);
+        return true;
+    } catch (err) {
+        console.error(`[TCP] Erreur d'envoi:`, err.message);
+        return false;
+    }
+}
+
 server.listen(TCP_PORT, '0.0.0.0', () => console.log(`🚀 Serveur actif sur le port ${TCP_PORT}`));
+
+// Fonction pour calculer le CRC16 Galileo
+function calculateCRC16(buffer) {
+    let crc = 0xFFFF;
+    for (let i = 0; i < buffer.length; i++) {
+        crc ^= buffer[i];
+        for (let j = 0; j < 8; j++) {
+            if ((crc & 0x0001) !== 0) crc = (crc >> 1) ^ 0xA001;
+            else crc >>= 1;
+        }
+    }
+    return crc;
+}
+
+function packGalileoCommand(commandText, imei) {
+    const textBuf = Buffer.from(commandText, 'ascii');
+    const imeiBuf = Buffer.from(imei.padEnd(15, '\0'), 'ascii');
+
+    // Construction du corps (tags)
+    const body = Buffer.concat([
+        Buffer.from([0x03]), imeiBuf,
+        Buffer.from([0x04, 0x00, 0x00]), // Tag 0x04 ID Boîtier (par défaut 0)
+        Buffer.from([0xE0, 0x00, 0x00, 0x00, 0x00]), // Tag 0xE0 Numéro commande (0)
+        Buffer.from([0xE1, textBuf.length]), textBuf // Tag 0xE1 Texte commande
+    ]);
+
+    const size = body.length;
+    const header = Buffer.alloc(3);
+    header[0] = 0x01;
+    header.writeUInt16LE(size, 1);
+
+    const packet = Buffer.concat([header, body]);
+    const crc = calculateCRC16(packet);
+    const crcBuf = Buffer.alloc(2);
+    crcBuf.writeUInt16LE(crc, 0);
+
+    return Buffer.concat([packet, crcBuf]);
+}
+
+
+module.exports = {
+    server,
+    sendCommand,
+    clients
+};

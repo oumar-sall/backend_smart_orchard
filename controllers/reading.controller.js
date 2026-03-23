@@ -1,4 +1,4 @@
-const { Reading, Component, ActivityLog, sequelize } = require('../models');
+const { Reading, Component, ActivityLog, Controller, sequelize } = require('../models');
 const { Op } = require('sequelize');
 
 const ReadingController = {
@@ -143,6 +143,48 @@ const ReadingController = {
             }).sort((a, b) => new Date(b.date) - new Date(a.date));
 
             res.json(response);
+        } catch (err) {
+            next(err);
+        }
+    },
+
+    async toggleIrrigation(req, res, next) {
+        try {
+            const { action } = req.body; // 'open' ou 'close'
+            const command = action === 'open' ? 'OUT 0,0' : 'OUT 0,1';
+            
+            // On récupère le contrôleur principal (pour l'IMEI)
+            const controller = await Controller.findOne({ order: [['id', 'ASC']] });
+            if (!controller) return res.status(404).json({ error: "Aucun contrôleur trouvé" });
+
+            const tcpServer = require('../shared/tcpServer');
+            const success = tcpServer.sendCommand(controller.imei, command);
+
+            if (success) {
+                // Logger l'activité
+                await ActivityLog.create({
+                    controller_id: controller.id,
+                    event_type: 'IRRIGATION',
+                    description: `Arrosage manuel : ${action === 'open' ? 'Ouverture' : 'Fermeture'}`
+                });
+                res.json({ success: true, message: `Commande ${command} envoyée` });
+            } else {
+                res.status(503).json({ error: "Boîtier hors ligne" });
+            }
+        } catch (err) {
+            next(err);
+        }
+    },
+
+    async getControllerStatus(req, res, next) {
+        try {
+            const controller = await Controller.findOne({ order: [['id', 'ASC']] });
+            if (!controller) return res.json({ online: false });
+
+            const tcpServer = require('../shared/tcpServer');
+            const isOnline = tcpServer.clients.has(controller.imei);
+
+            res.json({ online: isOnline });
         } catch (err) {
             next(err);
         }
