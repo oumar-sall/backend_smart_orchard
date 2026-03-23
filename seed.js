@@ -79,6 +79,13 @@ async function seed() {
         label: 'Pompe principale',
     });
 
+    const valveSecteur = await Component.create({
+        controller_id: ctrlReal.id,
+        type: 'actuator',
+        pin_number: 'OUT1',
+        label: 'Vanne Secteur (CR202)',
+    });
+
     // GPS (Labels obligatoires pour ton code TCP actuel)
     await Component.create({
         controller_id: ctrlReal.id,
@@ -141,6 +148,13 @@ async function seed() {
         auto_mode: true,
         threshold_min: 35.0, // Seuil sur l'humidité modbus0
         irrigation_duration: 600,
+    });
+
+    await Setting.create({
+        component_id: valveSecteur.id,
+        auto_mode: true,
+        threshold_min: 40.0,
+        irrigation_duration: 300,
     });
 
     await Access.create({ user_id: lamine.id, controller_id: ctrlReal.id });
