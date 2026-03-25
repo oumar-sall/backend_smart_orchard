@@ -2,6 +2,7 @@ require('dotenv').config();
 const net = require('net');
 const { EventEmitter } = require('events');
 const { Controller, Component, Reading, Setting, ActivityLog } = require('../models');
+const { PINS } = require('./enums');
 
 const TCP_PORT = process.env.TCP_PORT || 5000;
 const clients = new Map(); // IMEI -> Socket
@@ -10,7 +11,7 @@ const ackEmitter = new EventEmitter();
 
 
 const server = net.createServer((socket) => {
-    // console.log(`📡 Nouveau boîtier connecté : ${socket.remoteAddress}`);
+    console.log(`📡 Nouveau boîtier connecté : ${socket.remoteAddress}`);
     socket.setNoDelay(true); // Désactive l'algorithme de Nagle pour éviter la concaténation TCP via tunnel
     socket.imei = null;
     socket.sessionBuffer = Buffer.alloc(0);
@@ -52,7 +53,9 @@ const server = net.createServer((socket) => {
             const isTextReply = (trame[3] === 0x03 || trame[3] === 0x04);
             const ackBuf = Buffer.concat([Buffer.from([0x02]), trame.slice(-2)]);
             
-            if (isTextReply) {
+            // IMPORTANT : On ne retarde l'ACK QUE si c'est une réponse textuelle ET qu'on est déjà identifié.
+            // Si socket.imei est null, c'est le handshake (Identification), on DOIT répondre instantanément.
+            if (isTextReply && socket.imei) {
                 // On met l'ACK en attente. Si une commande est en file, elle l'emportera à la FIN de son buffer.
                 // Sinon, on le purge automatiquement au bout de 1500ms.
                 socket.pendingAck = ackBuf;
@@ -64,7 +67,7 @@ const server = net.createServer((socket) => {
                     }
                 }, 1500);
             } else {
-                // ACK Immédiat pour la télémétrie classique (pas de risque de collision de commande)
+                // ACK Immédiat pour la télémétrie classique et le HANDSHAKE IMEI
                 socket.write(ackBuf);
             }
 
@@ -114,17 +117,19 @@ const server = net.createServer((socket) => {
                             const recordDate = data.timestamp ? new Date(data.timestamp * 1000) : new Date();
 
                             if (finalTemp !== undefined) {
-                                const tempPin = data.temp !== undefined ? 'temp' : (data.temp1 !== undefined ? 'temp1' : 'modbus0');
+                                // On cherche par l'appellation stricte de l'enum (ex: '485 A')
+                                const tempPin = PINS.TEMP;
                                 const tempComp = controller.Components.find(c => c.pin_number === tempPin);
                                 if (tempComp) {
                                     await Reading.create({ component_id: tempComp.id, value: finalTemp, created_at: recordDate });
                                 } else {
-                                    console.warn(`[DB] ⚠️ Composant '${tempPin}' introuvable (pins dispo: ${controller.Components.map(c => c.pin_number).join(', ')})`);
+                                    console.warn(`[DB] ⚠️ Aucun composant configuré sur la broche '${tempPin}' (utilisée pour temp/modbus0)`);
                                 }
                             }
 
                             if (finalHum !== undefined) {
-                                const humPin = data.hum !== undefined ? 'hum' : (data.temp2 !== undefined ? 'temp2' : 'modbus1');
+                                // On cherche par l'appellation stricte de l'enum (ex: '485 B')
+                                const humPin = PINS.HUM;
                                 const humComp = controller.Components.find(c => c.pin_number === humPin);
 
                                 if (humComp) {
@@ -133,7 +138,7 @@ const server = net.createServer((socket) => {
                                     // --- LOGIQUE D'ARROSAGE AUTOMATIQUE ---
                                     await runAutoIrrigationCheck(finalHum, humComp.id, socket.imei, controller);
                                 } else {
-                                    console.warn(`[DB] ⚠️ Composant hum '${humPin}' introuvable — logique d'arrosage auto ignorée pour ce cycle.`);
+                                    console.warn(`[DB] ⚠️ Aucun composant configuré sur la broche '${humPin}' (utilisée pour hum/modbus1)`);
                                 }
                             }
                         } catch (e) {
@@ -151,13 +156,19 @@ const server = net.createServer((socket) => {
 
     socket.on('close', () => {
         if (socket.imei) {
-            clients.delete(socket.imei);
+            // Sécurité : on ne retire du Map que SI c'est cette socket précise qui est enregistrée.
+            // (Évite qu'une ancienne socket qui ferme tardivement ne déconnecte une nouvelle session valide)
+            if (clients.get(socket.imei) === socket) {
+                clients.delete(socket.imei);
+            }
             console.log(`📡 Déconnexion boîtier (IMEI: ${socket.imei}). Clients restants: ${clients.size}`);
         }
     });
 
     socket.on('error', (err) => {
-        if (socket.imei) clients.delete(socket.imei);
+        if (socket.imei && clients.get(socket.imei) === socket) {
+            clients.delete(socket.imei);
+        }
         console.error(`❌ Erreur socket (IMEI: ${socket.imei || 'Inconnu'}):`, err.message);
     });
 });
@@ -253,7 +264,7 @@ function decodeGalileo(buffer) {
                 if (tagSizes[tag] !== undefined) {
                     offset += tagSizes[tag];
                 } else {
-                    console.log(`[Warn] Tag inconnu ignoré: 0x${tag.toString(16)} à l'offset ${offset}`);
+                    console.log(`[Warn] Tag inconnu ignoré: 0x${tag.toString(16)} à l'offset ${offset} (Buffer total: ${buffer.toString('hex')})`);
                     // Éviter la boucle infinie: on considère que ce paquet est corrompu ou illisible après cet offset
                     offset = totalDataLength;
                 }
@@ -492,6 +503,7 @@ module.exports = {
     sendCommand,
     clients,
     runAutoIrrigationCheck,
+    restoreTimersOnStartup,
 };
 
 // -------------------------------------------------------------

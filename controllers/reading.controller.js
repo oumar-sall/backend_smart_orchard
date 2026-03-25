@@ -1,5 +1,6 @@
 const { Reading, Component, ActivityLog, Controller, Setting, sequelize } = require('../models');
 const { Op } = require('sequelize');
+const { PINS } = require('../shared/enums');
 
 const ReadingController = {
     async getLatestDashboard(req, res, next) {
@@ -8,35 +9,31 @@ const ReadingController = {
             const latestReadings = await Reading.findAll({
                 include: [{
                     model: Component,
-                    attributes: ['type', 'pin_number', 'label']
+                    attributes: ['type', 'pin_number', 'label', 'unit', 'min_value', 'max_value']
                 }],
                 order: [['created_at', 'DESC']],
                 limit: 50 // We just pull the recent ones to extract the latest distinctive metrics
             });
 
-            // Extract the latest temperature, humidity and PH
-            let temperature = null;
-            let humidity = null;
-            let ph = null;
+            const sensorsMap = {};
 
             for (const reading of latestReadings) {
-                if (reading.Component) {
+                if (reading.Component && reading.Component.type === 'sensor') {
                     const pin = reading.Component.pin_number;
-                    // Temp: tag FE → 'temp', ou tag modbus direct → 'modbus0'
-                    if (temperature === null && (pin === 'temp' || pin === 'modbus0')) {
-                        temperature = reading.value;
-                    }
-                    // Humidité: tag FE → 'hum', ou tag modbus direct → 'modbus1'
-                    if (humidity === null && (pin === 'hum' || pin === 'modbus1')) {
-                        humidity = reading.value;
-                    }
-                    // PH: pin 'ph'
-                    if (ph === null && pin === 'ph') {
-                        ph = reading.value;
+                    if (!sensorsMap[pin]) {
+                        sensorsMap[pin] = {
+                            id: pin,
+                            title: reading.Component.label,
+                            value: reading.value,
+                            unit: reading.Component.unit || '',
+                            min: reading.Component.min_value ?? 0,
+                            max: reading.Component.max_value ?? 100,
+                        };
                     }
                 }
-                if (temperature !== null && humidity !== null && ph !== null) break;
             }
+            
+            const sensorsList = Object.values(sensorsMap);
 
             // Fetch ALL actuators and their irrigation status
             const allActuators = await Component.findAll({
@@ -53,9 +50,7 @@ const ReadingController = {
             }));
 
             res.json({
-                temperature: temperature || '--',
-                humidity: humidity || '--',
-                ph: ph || '--',
+                sensors: sensorsList,
                 actuators: irrigationStatuses
             });
         } catch (err) {
@@ -115,8 +110,8 @@ const ReadingController = {
                 const dateStr = new Date(r.created_at).toISOString().split('T')[0];
                 if (historyMap[dateStr]) {
                     const pin = r.Component?.pin_number;
-                    if (pin === 'temp' || pin === 'modbus0') historyMap[dateStr].tempValues.push(r.value);
-                    if (pin === 'hum' || pin === 'modbus1') historyMap[dateStr].humValues.push(r.value);
+                    if (pin === PINS.TEMP) historyMap[dateStr].tempValues.push(r.value);
+                    if (pin === PINS.HUM) historyMap[dateStr].humValues.push(r.value);
                     if (pin === 'ph') historyMap[dateStr].phValues.push(r.value);
                 }
             });
@@ -201,7 +196,7 @@ const ReadingController = {
                     setTimeout(async () => {
                         try {
                             const freshComp = await Component.findByPk(component.id);
-                            if (freshComp && freshComp.timer_end && freshComp.timer_end.getTime() === timerEnd.getTime()) {
+                            if (freshComp && freshComp.timer_end && Math.abs(freshComp.timer_end.getTime() - timerEnd.getTime()) < 1000) {
                                     tcpServer.sendCommand(controller.imei, `${component.pin_number},1`);
                                 await freshComp.update({ timer_end: null });
                                 await ActivityLog.create({
@@ -279,6 +274,56 @@ const ReadingController = {
         }
     },
 
+    async createComponent(req, res, next) {
+        try {
+            const { type, pin_number, label, unit, min_value, max_value } = req.body;
+            if (!['sensor', 'actuator'].includes(type) || !pin_number || !label) {
+                return res.status(400).json({ error: 'Données invalides (type, pin_number, label requis)' });
+            }
+
+            const controller = await Controller.findOne({ order: [['id', 'ASC']] });
+            if (!controller) {
+                return res.status(404).json({ error: 'Aucun contrôleur n\'a été trouvé dans la base' });
+            }
+
+            const newComponent = await Component.create({
+                controller_id: controller.id,
+                type,
+                pin_number,
+                label,
+                unit,
+                min_value,
+                max_value
+            });
+
+            // Si c'est un actionneur, créer des paramètres par défaut
+            if (type === 'actuator') {
+                await Setting.create({ component_id: newComponent.id });
+            }
+
+            res.json(newComponent);
+        } catch (err) {
+            console.error('[Controller] Error creating component:', err);
+            next(err);
+        }
+    },
+
+    async deleteComponent(req, res, next) {
+        try {
+            const { id } = req.params;
+            const component = await Component.findByPk(id);
+            if (!component) {
+                return res.status(404).json({ error: 'Composant introuvable' });
+            }
+
+            await component.destroy();
+            res.json({ success: true, message: 'Composant supprimé avec succès' });
+        } catch (err) {
+            console.error('[Controller] Error deleting component:', err);
+            next(err);
+        }
+    },
+
     /**
      * POST /readings/simulate
      * Body: { humidity: number, pin?: string }
@@ -300,8 +345,8 @@ const ReadingController = {
             });
             if (!controller) return res.status(404).json({ error: 'Aucun contrôleur trouvé' });
 
-            // Trouve le composant humidité (par pin ou par défaut modbus1)
-            const targetPin = pin || 'modbus1';
+            // Trouve le composant humidité (par defaut PINS.HUM)
+            const targetPin = pin || PINS.HUM;
             const humComp = controller.Components.find(c => c.pin_number === targetPin);
             if (!humComp) {
                 return res.status(404).json({ error: `Composant '${targetPin}' introuvable` });
