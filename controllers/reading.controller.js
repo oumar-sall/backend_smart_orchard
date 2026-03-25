@@ -264,7 +264,65 @@ const ReadingController = {
         } catch (err) {
             next(err);
         }
+    },
+
+    async getSensors(req, res, next) {
+        try {
+            const sensors = await Component.findAll({
+                where: { type: 'sensor' },
+                attributes: ['id', 'label', 'pin_number'],
+                order: [['label', 'ASC']]
+            });
+            res.json(sensors);
+        } catch (err) {
+            next(err);
+        }
+    },
+
+    /**
+     * POST /readings/simulate
+     * Body: { humidity: number, pin?: string }
+     * Simule une lecture capteur pour tester la logique d'arrosage automatique.
+     */
+    async simulateHumidity(req, res, next) {
+        try {
+            const { humidity, pin } = req.body;
+            if (humidity === undefined || isNaN(humidity)) {
+                return res.status(400).json({ error: 'Champ "humidity" (number) requis' });
+            }
+
+            // Récupère le premier contrôleur
+            const controller = await Controller.findOne({
+                include: [{
+                    model: Component,
+                    include: [Setting]
+                }]
+            });
+            if (!controller) return res.status(404).json({ error: 'Aucun contrôleur trouvé' });
+
+            // Trouve le composant humidité (par pin ou par défaut modbus1)
+            const targetPin = pin || 'modbus1';
+            const humComp = controller.Components.find(c => c.pin_number === targetPin);
+            if (!humComp) {
+                return res.status(404).json({ error: `Composant '${targetPin}' introuvable` });
+            }
+
+            console.log(`[SIMULATE] 🧪 Injection humidité simulée: ${humidity}% sur capteur '${targetPin}'`);
+
+            const tcpServer = require('../shared/tcpServer');
+            await tcpServer.runAutoIrrigationCheck(humidity, humComp.id, controller.imei, controller);
+
+            res.json({
+                ok: true,
+                message: `Simulation exécutée: hum=${humidity}% sur capteur '${targetPin}'`,
+                controller: controller.name,
+                imei: controller.imei,
+            });
+        } catch (err) {
+            next(err);
+        }
     }
 };
+
 
 module.exports = ReadingController;

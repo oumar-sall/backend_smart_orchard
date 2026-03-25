@@ -8,7 +8,9 @@ router.get('/dashboard', ReadingController.getLatestDashboard);
 router.get('/history', ReadingController.getHistory);
 router.get('/status', ReadingController.getControllerStatus);
 router.get('/actuators', ReadingController.getActuators);
+router.get('/sensors', ReadingController.getSensors);
 router.post('/irrigation', ReadingController.toggleIrrigation);
+router.post('/simulate', ReadingController.simulateHumidity); // 🧪 Test seuil auto
 
 // Paramètres
 router.get('/settings', SettingController.getSettings);
