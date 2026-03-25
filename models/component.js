@@ -23,6 +23,18 @@ module.exports = (sequelize) => {
             type: DataTypes.STRING,
             allowNull: false,
         },
+        unit: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        min_value: {
+            type: DataTypes.FLOAT,
+            allowNull: true,
+        },
+        max_value: {
+            type: DataTypes.FLOAT,
+            allowNull: true,
+        },
         timer_end: {
             type: DataTypes.DATE,
             allowNull: true,

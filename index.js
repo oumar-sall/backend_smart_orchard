@@ -30,6 +30,7 @@ sequelize.sync({ force: false }).then(async () => {
 
     // On ne démarre le serveur TCP qu'une fois la base prête
     const tcpServer = require('./shared/tcpServer');
+    await tcpServer.restoreTimersOnStartup();
 
     app.listen(3000, () => {
         console.log('Serveur Backend démarré sur http://localhost:3000');
