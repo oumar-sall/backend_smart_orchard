@@ -5,12 +5,12 @@ const SettingController = {
     async getSettings(req, res, next) {
         try {
             const { pin } = req.query;
-            const targetPin = pin; // Fallback par défaut
+            if (!pin) return res.status(400).json({ error: 'Paramètre pin requis' });
 
             const settings = await Setting.findOne({
                 include: [{
                     model: Component,
-                    where: { pin_number: targetPin }
+                    where: { pin_number: pin }
                 }]
             });
             res.json(settings);
@@ -21,7 +21,8 @@ const SettingController = {
 
     async updateSettings(req, res, next) {
         try {
-            const { irrigation_duration, reporting_interval, pin } = req.body;
+            const { irrigation_duration, reporting_interval, threshold_min, sensor_id, auto_mode, pin } = req.body;
+            if (!pin) return res.status(400).json({ error: 'Paramètre pin requis' });
             const targetPin = pin;
 
             const settings = await Setting.findOne({
@@ -36,8 +37,13 @@ const SettingController = {
                 const oldInterval = settings.reporting_interval;
                 await settings.update({
                     irrigation_duration: irrigation_duration !== undefined ? irrigation_duration : settings.irrigation_duration,
-                    reporting_interval: reporting_interval !== undefined ? reporting_interval : settings.reporting_interval
+                    reporting_interval: reporting_interval !== undefined ? reporting_interval : settings.reporting_interval,
+                    threshold_min: threshold_min !== undefined ? threshold_min : settings.threshold_min,
+                    sensor_id: sensor_id !== undefined ? sensor_id : settings.sensor_id,
+                    auto_mode: auto_mode !== undefined ? auto_mode : settings.auto_mode,
                 });
+
+
 
                 // Si l'intervalle a changé, on envoie la commande au boîtier
                 if (reporting_interval && reporting_interval !== oldInterval) {
