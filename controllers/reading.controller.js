@@ -5,11 +5,15 @@ const { PINS } = require('../shared/enums');
 const ReadingController = {
     async getLatestDashboard(req, res, next) {
         try {
+            const { controller_id } = req.query;
+            const componentWhere = controller_id ? { controller_id } : {};
+
             // Find the most recent reading for each component and map it
             const latestReadings = await Reading.findAll({
                 include: [{
                     model: Component,
-                    attributes: ['type', 'pin_number', 'label', 'unit', 'min_value', 'max_value']
+                    attributes: ['type', 'pin_number', 'label', 'unit', 'min_value', 'max_value'],
+                    where: componentWhere
                 }],
                 order: [['created_at', 'DESC']],
                 limit: 50 // We just pull the recent ones to extract the latest distinctive metrics
@@ -35,9 +39,12 @@ const ReadingController = {
             
             const sensorsList = Object.values(sensorsMap);
 
-            // Fetch ALL actuators and their irrigation status
+            // Fetch ALL actuators and their irrigation status for THIS controller
             const allActuators = await Component.findAll({
-                where: { type: 'actuator' },
+                where: { 
+                    type: 'actuator',
+                    ...componentWhere
+                },
                 attributes: ['id', 'label', 'pin_number', 'timer_end']
             });
 
@@ -60,31 +67,36 @@ const ReadingController = {
 
     async getHistory(req, res, next) {
         try {
-            const { period } = req.query;
+            const { period, controller_id } = req.query;
             const daysToFetch = period === 'month' ? 30 : 7;
+            const componentWhere = controller_id ? { controller_id } : {};
 
             const startDate = new Date();
             startDate.setDate(startDate.getDate() - daysToFetch);
             startDate.setHours(0, 0, 0, 0);
 
-            // 1. Fetch readings
+            // 1. Fetch readings for component of this controller
             const readings = await Reading.findAll({
                 where: {
                     created_at: { [Op.gte]: startDate }
                 },
                 include: [{
                     model: Component,
-                    attributes: ['pin_number']
+                    attributes: ['pin_number'],
+                    where: componentWhere
                 }],
                 order: [['created_at', 'ASC']]
             });
 
-            // 2. Fetch irrigation logs
+            // 2. Fetch irrigation logs for this controller
+            const logWhere = {
+                event_type: 'IRRIGATION',
+                timestamp: { [Op.gte]: startDate }
+            };
+            if (controller_id) logWhere.controller_id = controller_id;
+
             const activityLogs = await ActivityLog.findAll({
-                where: {
-                    event_type: 'IRRIGATION',
-                    timestamp: { [Op.gte]: startDate }
-                }
+                where: logWhere
             });
 
             // 3. Process data per day
@@ -236,13 +248,16 @@ const ReadingController = {
 
     async getControllerStatus(req, res, next) {
         try {
-            const controller = await Controller.findOne({ order: [['id', 'ASC']] });
+            const { controller_id } = req.query;
+            const where = controller_id ? { id: controller_id } : { order: [['id', 'ASC']] };
+            
+            const controller = await Controller.findOne({ where: controller_id ? { id: controller_id } : {}, order: controller_id ? [] : [['id', 'ASC']] });
             if (!controller) return res.json({ online: false });
 
             const tcpServer = require('../shared/tcpServer');
             const isOnline = tcpServer.clients.has(controller.imei);
 
-            res.json({ online: isOnline });
+            res.json({ online: isOnline, controllerName: controller.name });
         } catch (err) {
             next(err);
         }
@@ -250,8 +265,12 @@ const ReadingController = {
 
     async getActuators(req, res, next) {
         try {
+            const { controller_id } = req.query;
             const actuators = await Component.findAll({
-                where: { type: 'actuator' },
+                where: { 
+                    type: 'actuator',
+                    ...(controller_id && { controller_id })
+                },
                 attributes: ['id', 'label', 'pin_number'],
                 order: [['pin_number', 'ASC']]
             });
@@ -263,8 +282,12 @@ const ReadingController = {
 
     async getSensors(req, res, next) {
         try {
+            const { controller_id } = req.query;
             const sensors = await Component.findAll({
-                where: { type: 'sensor' },
+                where: { 
+                    type: 'sensor',
+                    ...(controller_id && { controller_id })
+                },
                 attributes: ['id', 'label', 'pin_number'],
                 order: [['label', 'ASC']]
             });
@@ -276,18 +299,22 @@ const ReadingController = {
 
     async createComponent(req, res, next) {
         try {
-            const { type, pin_number, label, unit, min_value, max_value } = req.body;
+            const { type, pin_number, label, unit, min_value, max_value, controller_id } = req.body;
             if (!['sensor', 'actuator'].includes(type) || !pin_number || !label) {
                 return res.status(400).json({ error: 'Données invalides (type, pin_number, label requis)' });
             }
 
-            const controller = await Controller.findOne({ order: [['id', 'ASC']] });
-            if (!controller) {
-                return res.status(404).json({ error: 'Aucun contrôleur n\'a été trouvé dans la base' });
+            let targetControllerId = controller_id;
+            if (!targetControllerId) {
+                const controller = await Controller.findOne({ order: [['id', 'ASC']] });
+                if (!controller) {
+                    return res.status(404).json({ error: 'Aucun contrôleur n\'a été trouvé dans la base' });
+                }
+                targetControllerId = controller.id;
             }
 
             const newComponent = await Component.create({
-                controller_id: controller.id,
+                controller_id: targetControllerId,
                 type,
                 pin_number,
                 label,
@@ -331,13 +358,15 @@ const ReadingController = {
      */
     async simulateHumidity(req, res, next) {
         try {
-            const { humidity, pin } = req.body;
+            const { humidity, pin, controller_id } = req.body;
             if (humidity === undefined || isNaN(humidity)) {
                 return res.status(400).json({ error: 'Champ "humidity" (number) requis' });
             }
 
-            // Récupère le premier contrôleur
+            // Récupère le contrôleur spécifié ou le premier
             const controller = await Controller.findOne({
+                where: controller_id ? { id: controller_id } : {},
+                order: controller_id ? [] : [['id', 'ASC']],
                 include: [{
                     model: Component,
                     include: [Setting]

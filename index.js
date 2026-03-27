@@ -4,6 +4,7 @@ const { sequelize } = require('./models');
 const errorHandler = require('./middlewares/errorHandler');
 
 // ── Routes ───────────────────────────────────────────────────────
+const controllerRoutes = require('./routes/controller.routes');
 const readingRoutes = require('./routes/reading.routes');
 
 const app = express();
@@ -12,6 +13,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use('/readings', readingRoutes);
+app.use('/controllers', controllerRoutes);
 
 // ── Gestion centralisée des erreurs (toujours en dernier) ────────
 app.use(errorHandler);
