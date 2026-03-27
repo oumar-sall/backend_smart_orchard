@@ -1,132 +1,19 @@
 const {
-    sequelize,
-    User,
     Controller,
-    Component,
-    Reading,
-    Setting,
-    Access,
-    ActivityLog,
 } = require('./models');
 
 async function seed() {
-    console.log('🔄 Synchronisation de la base de données (FORCE: TRUE)...');
-    await sequelize.sync({ force: true });
-
-    // ── Utilisateurs ─────────────────────────────────────────────
-    const lamine = await User.create({
-        email: 'lamine@agrotech.com',
-        password: 'password123',
-        phone: '+22300000000',
-        first_name: 'Lamine',
-        last_name: 'Sacko',
-    });
-
-    // ── TON VRAI CONTRÔLEUR (GALILEOSKY) ──────────────────────────
-    const ctrlReal = await Controller.create({
-        id: '57292f5e-01b3-4e44-8390-dbc319efd96b',
-        imei: '865513072734987',
-        name: 'Galileosky Verger Test',
-    });
-
-    console.log(`✅ Contrôleur réel créé : ${ctrlReal.name}`);
-
-    // ── COMPOSANTS RS485 (MODBUS) ────────────────────────────────
-    // modbus0 correspond au tag 0x90 (Temperature ds tcpServer.js)
-    const sensorTempRS485 = await Component.create({
-        controller_id: ctrlReal.id,
-        type: 'sensor',
-        pin_number: 'modbus0',
-        label: 'Température Air (RS485)',
-    });
-
-    // modbus1 correspond au tag 0x91 (Humidité ds tcpServer.js)
-    const sensorHumiditeRS485 = await Component.create({
-        controller_id: ctrlReal.id,
-        type: 'sensor',
-        pin_number: 'modbus1',
-        label: 'Humidité Sol (RS485)',
-    });
-
-    // capteur de temp via Tag FE
-    const sensorTempFE = await Component.create({
-        controller_id: ctrlReal.id,
-        type: 'sensor',
-        pin_number: 'temp',
-        label: 'Température Sol (RS485 - Tag FE)',
-    });
-
-    // capteur humidité via Tag FE
-    const sensorHumFE = await Component.create({
-        controller_id: ctrlReal.id,
-        type: 'sensor',
-        pin_number: 'hum',
-        label: 'Humidité Air (RS485 - Tag FE)',
-    });
-
-    // ── AUTRES COMPOSANTS ────────────────────────────────────────
-    const sensorBattery = await Component.create({
-        controller_id: ctrlReal.id,
-        type: 'sensor',
-        pin_number: 'VBAT',
-        label: 'Batterie interne',
-    });
-
-    const pumpVerger = await Component.create({
-        controller_id: ctrlReal.id,
-        type: 'actuator',
-        pin_number: 'OUT0',
-        label: 'Pompe principale',
-    });
-
-    // GPS (Labels obligatoires pour ton code TCP actuel)
-    await Component.create({
-        controller_id: ctrlReal.id,
-        type: 'sensor',
-        pin_number: 'GPS_LAT',
-        label: 'Latitude',
-    });
-    await Component.create({
-        controller_id: ctrlReal.id,
-        type: 'sensor',
-        pin_number: 'GPS_LON',
-        label: 'Longitude',
-    });
-
-    const sensorPH = await Component.create({
-        controller_id: ctrlReal.id,
-        type: 'sensor',
-        pin_number: 'ph',
-        label: 'Capteur PH Sol',
-    });
-
-    // ── Lectures Initiales (pour le Dashboard) ───────────────────
-    const now = new Date();
-    await Reading.create({ component_id: sensorTempRS485.id, value: 45, created_at: now });
-    await Reading.create({ component_id: sensorHumiditeRS485.id, value: 85, created_at: now });
-    await Reading.create({ component_id: sensorPH.id, value: 6.8, created_at: now });
-
-    // ── Paramètres & Accès ───────────────────────────────────────
-    await Setting.create({
-        component_id: pumpVerger.id,
-        auto_mode: true,
-        threshold_min: 35.0, // Seuil sur l'humidité modbus0
-        irrigation_duration: 600,
-    });
-
-    await Access.create({ user_id: lamine.id, controller_id: ctrlReal.id });
-
-    console.log('\n--- VERIFICATION DES IDS ---');
-    console.log(`ID Contrôleur Real: ${ctrlReal.id}`);
-    const checkComps = await Component.findAll({ where: { controller_id: ctrlReal.id } });
-    console.log(`Nombre de composants liés: ${checkComps.length}`);
-    checkComps.forEach(c => {
-        if (c.controller_id !== ctrlReal.id) {
-            console.error(`❌ ERREUR: Composant ${c.label} a un controller_id DIFFERENT: ${c.controller_id}`);
+    // ── CONTRÔLEUR (GALILEOSKY) ───────────────────────────────────
+    const [ctrlReal] = await Controller.findOrCreate({
+        where: { imei: '865513072734987' },
+        defaults: {
+            id: '57292f5e-01b3-4e44-8390-dbc319efd96b',
+            name: 'Galileosky Verger',
         }
     });
 
-    console.log('\n🌱 Base de données prête pour le RS485 !');
+    console.log(`✅ Contrôleur réel prêt : ${ctrlReal.name} (IMEI: ${ctrlReal.imei})`);
+    console.log('\n🌱 Base de données initialisée avec le boîtier uniquement !');
 }
 
 module.exports = seed;

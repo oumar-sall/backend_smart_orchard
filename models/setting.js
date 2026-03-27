@@ -28,7 +28,12 @@ module.exports = (sequelize) => {
             type: DataTypes.INTEGER,
             defaultValue: 30,
         },
+        sensor_id: {
+            type: DataTypes.UUID,
+            allowNull: true, // Peut être nul si pas de capteur associé
+        },
     }, {
+
         tableName: 'settings',
         timestamps: false,
     });
