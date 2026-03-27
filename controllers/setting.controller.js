@@ -4,13 +4,16 @@ const { sendCommand } = require('../shared/tcpServer');
 const SettingController = {
     async getSettings(req, res, next) {
         try {
-            const { pin } = req.query;
+            const { pin, controller_id } = req.query;
             if (!pin) return res.status(400).json({ error: 'Paramètre pin requis' });
+
+            const componentWhere = { pin_number: pin };
+            if (controller_id) componentWhere.controller_id = controller_id;
 
             const settings = await Setting.findOne({
                 include: [{
                     model: Component,
-                    where: { pin_number: pin }
+                    where: componentWhere
                 }]
             });
             res.json(settings);
@@ -21,14 +24,16 @@ const SettingController = {
 
     async updateSettings(req, res, next) {
         try {
-            const { irrigation_duration, reporting_interval, threshold_min, sensor_id, auto_mode, pin } = req.body;
+            const { irrigation_duration, reporting_interval, threshold_min, sensor_id, auto_mode, pin, controller_id } = req.body;
             if (!pin) return res.status(400).json({ error: 'Paramètre pin requis' });
-            const targetPin = pin;
+            
+            const componentWhere = { pin_number: pin };
+            if (controller_id) componentWhere.controller_id = controller_id;
 
             const settings = await Setting.findOne({
                 include: [{
                     model: Component,
-                    where: { pin_number: targetPin },
+                    where: componentWhere,
                     include: [{ model: Controller }]
                 }]
             });
