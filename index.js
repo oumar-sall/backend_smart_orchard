@@ -6,6 +6,7 @@ const errorHandler = require('./middlewares/errorHandler');
 // ── Routes ───────────────────────────────────────────────────────
 const controllerRoutes = require('./routes/controller.routes');
 const readingRoutes = require('./routes/reading.routes');
+const activityLogRoutes = require('./routes/activityLog.routes');
 
 const app = express();
 
@@ -14,6 +15,7 @@ app.use(express.json());
 
 app.use('/readings', readingRoutes);
 app.use('/controllers', controllerRoutes);
+app.use('/activity-logs', activityLogRoutes);
 
 // ── Gestion centralisée des erreurs (toujours en dernier) ────────
 app.use(errorHandler);

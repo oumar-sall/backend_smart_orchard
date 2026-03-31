@@ -1,4 +1,4 @@
-const { Setting, Component, Controller } = require('../models');
+const { Setting, Component, Controller, ActivityLog } = require('../models');
 const { sendCommand } = require('../shared/tcpServer');
 
 const SettingController = {
@@ -48,7 +48,12 @@ const SettingController = {
                     auto_mode: auto_mode !== undefined ? auto_mode : settings.auto_mode,
                 });
 
-
+                // Audit Log
+                await ActivityLog.create({
+                    controller_id: settings.Component.controller_id,
+                    event_type: 'SETTINGS_UPDATE',
+                    description: `Réglages mis à jour pour : ${settings.Component.label}`
+                });
 
                 // Si l'intervalle a changé, on envoie la commande au boîtier
                 if (reporting_interval && reporting_interval !== oldInterval) {
