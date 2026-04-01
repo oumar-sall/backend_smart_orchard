@@ -16,6 +16,11 @@ module.exports = (sequelize) => {
             type: DataTypes.STRING,
             allowNull: false,
         },
+        security_pin: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            defaultValue: '123456',
+        },
     }, {
         tableName: 'controllers',
         timestamps: false,

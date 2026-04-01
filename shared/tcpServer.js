@@ -3,6 +3,7 @@ const net = require('net');
 const { EventEmitter } = require('events');
 const { Controller, Component, Reading, Setting, ActivityLog } = require('../models');
 const { PINS } = require('./enums');
+const logger = require('./logger');
 
 const TCP_PORT = process.env.TCP_PORT || 5000;
 const clients = new Map(); // IMEI -> Socket
@@ -11,7 +12,6 @@ const ackEmitter = new EventEmitter();
 
 
 const server = net.createServer((socket) => {
-    console.log(`📡 Nouveau boîtier connecté : ${socket.remoteAddress}`);
     socket.setNoDelay(true); // Désactive l'algorithme de Nagle pour éviter la concaténation TCP via tunnel
     socket.imei = null;
     socket.sessionBuffer = Buffer.alloc(0);
@@ -76,7 +76,7 @@ const server = net.createServer((socket) => {
                 // Analyse si la trame contient une réponse textuelle (Command ID 0x03 ou 0x04)
                 if (trame[3] === 0x03 || trame[3] === 0x04) {
                     const responseText = trame.slice(4, trame.length - 2).toString();
-                    console.log(`[TCP] 📥 Réponse du boîtier ${socket.imei} : "${responseText}"`);
+                    logger.info(`[TCP] 📥 Réponse du boîtier ${socket.imei} : "${responseText}"`);
                     if (socket.imei) ackEmitter.emit(`ack_${socket.imei}`);
                 }
                 for (const data of records) {
@@ -91,7 +91,7 @@ const server = net.createServer((socket) => {
                     const finalTemp = data.temp ?? data.temp1 ?? data.modbus0;
                     const finalHum = data.hum ?? data.temp2 ?? data.modbus1;
 
-                    console.log(`[TRAME] IMEI=${socket.imei} | temp=${finalTemp ?? 'N/A'} | hum=${finalHum ?? 'N/A'}`);
+                    logger.debug(`[TRAME] IMEI=${socket.imei} | temp=${finalTemp ?? 'N/A'} | hum=${finalHum ?? 'N/A'}`);
 
                     if (finalTemp !== undefined || finalHum !== undefined) {
                         // Sauvegarde DB (async/await)
@@ -105,12 +105,12 @@ const server = net.createServer((socket) => {
                             });
 
                             if (!controller) {
-                                console.warn(`[DB] Contrôleur introuvable pour IMEI: ${socket.imei}`);
+                                logger.warn(`[DB] Contrôleur introuvable pour IMEI: ${socket.imei}`);
                                 continue;
                             }
 
                             if (!controller.Components || controller.Components.length === 0) {
-                                console.warn(`[DB] ⚠️ Aucun composant trouvé pour le contrôleur ${controller.name} (ID: ${controller.id})`);
+                                logger.warn(`[DB] ⚠️ Aucun composant trouvé pour le contrôleur ${controller.name} (ID: ${controller.id})`);
                             }
 
                             // Conversion du timestamp (secondes depuis 01/01/1970) en Date valide pour MySql
@@ -123,7 +123,7 @@ const server = net.createServer((socket) => {
                                 if (tempComp) {
                                     await Reading.create({ component_id: tempComp.id, value: finalTemp, created_at: recordDate });
                                 } else {
-                                    console.warn(`[DB] ⚠️ Aucun composant configuré sur la broche '${tempPin}' (utilisée pour temp/modbus0)`);
+                                    logger.warn(`[DB] ⚠️ Aucun composant configuré sur la broche '${tempPin}' (utilisée pour temp/modbus0)`);
                                 }
                             }
 
@@ -138,16 +138,16 @@ const server = net.createServer((socket) => {
                                     // --- LOGIQUE D'ARROSAGE AUTOMATIQUE ---
                                     await runAutoIrrigationCheck(finalHum, humComp.id, socket.imei, controller);
                                 } else {
-                                    console.warn(`[DB] ⚠️ Aucun composant configuré sur la broche '${humPin}' (utilisée pour hum/modbus1)`);
+                                    logger.warn(`[DB] ⚠️ Aucun composant configuré sur la broche '${humPin}' (utilisée pour hum/modbus1)`);
                                 }
                             }
                         } catch (e) {
-                            console.error('[DB] Erreur:', e.message);
+                            logger.error(`[DB] Erreur: ${e.message}`);
                         }
                     }
                 }
             } catch (err) {
-                console.error("❌ Erreur décodage:", err.message);
+                logger.error(`❌ Erreur décodage: ${err.message}`);
             }
             cursor += trameSize;
         }
@@ -169,7 +169,7 @@ const server = net.createServer((socket) => {
         if (socket.imei && clients.get(socket.imei) === socket) {
             clients.delete(socket.imei);
         }
-        console.error(`❌ Erreur socket (IMEI: ${socket.imei || 'Inconnu'}):`, err.message);
+        logger.error(`❌ Erreur socket (IMEI: ${socket.imei || 'Inconnu'}): ${err.message}`);
     });
 });
 
@@ -264,7 +264,7 @@ function decodeGalileo(buffer) {
                 if (tagSizes[tag] !== undefined) {
                     offset += tagSizes[tag];
                 } else {
-                    console.log(`[Warn] Tag inconnu ignoré: 0x${tag.toString(16)} à l'offset ${offset} (Buffer total: ${buffer.toString('hex')})`);
+                    logger.warn(`[Warn] Tag inconnu ignoré: 0x${tag.toString(16)} à l'offset ${offset}`);
                     // Éviter la boucle infinie: on considère que ce paquet est corrompu ou illisible après cet offset
                     offset = totalDataLength;
                 }
@@ -302,11 +302,11 @@ function sendCommand(imei, command) {
     // On injecte donc une commande fantôme "PING" sacrificielle qui absorbera le bug du boîtier.
     if (qc.queue.length === 0 && !qc.isProcessing) {
         qc.queue.push("PING");
-        console.log(`[TCP] 🛡️ Commande fantôme PING injectée pour protéger la commande ${command}`);
+        logger.info(`[TCP] 🛡️ Commande fantôme PING injectée pour protéger la commande ${command}`);
     }
 
     qc.queue.push(command);
-    console.log(`[TCP] ⏳ Commande "${command}" mise en file d'attente pour l'IMEI ${imei}. (Queue length: ${qc.queue.length})`);
+    logger.info(`[TCP] ⏳ Commande "${command}" mise en file d'attente pour l'IMEI ${imei}. (Queue length: ${qc.queue.length})`);
 
     // Démarrage asynchrone pour ne pas bloquer l'exécution
     processQueue(imei);
@@ -342,16 +342,16 @@ async function processQueue(imei) {
                 if (socket.pendingAck) {
                     packet = Buffer.concat([packet, socket.pendingAck]);
                     socket.pendingAck = null;
-                    console.log(`[TCP] 🔗 ACK attaché en toute sécurité à la fin de la commande ${command}.`);
+                    logger.info(`[TCP] 🔗 ACK attaché en toute sécurité à la fin de la commande ${command}.`);
                 }
 
                 socket.write(packet);
-                console.log(`[TCP] 📤 Trame binaire envoyée (depuis file d'attente) à ${imei}: ${command}`);
+                logger.info(`[TCP] 📤 Trame binaire envoyée (depuis file d'attente) à ${imei}: ${command}`);
             } catch (err) {
-                console.error(`[TCP] Erreur d'envoi:`, err.message);
+                logger.error(`[TCP] Erreur d'envoi: ${err.message}`);
             }
         } else {
-            console.warn(`[TCP] Impossible d'envoyer la commande de la file d'attente (boîtier déconnecté) : ${command}`);
+            logger.warn(`[TCP] Impossible d'envoyer la commande de la file d'attente (boîtier déconnecté) : ${command}`);
         }
 
         // ⏱️ TEMPORISATION INTELLIGENTE (ACK-BASED) AVEC TIMEOUT 1 SECONDE MAX
@@ -375,7 +375,7 @@ async function processQueue(imei) {
     qc.isProcessing = false;
 }
 
-server.listen(TCP_PORT, '0.0.0.0', () => console.log(`🚀 Serveur actif sur le port ${TCP_PORT}`));
+server.listen(TCP_PORT, '0.0.0.0', () => logger.info(`🚀 Serveur actif sur le port ${TCP_PORT}`));
 
 // Fonction pour calculer le CRC16 Galileo
 function calculateCRC16(buffer) {
@@ -437,7 +437,7 @@ async function runAutoIrrigationCheck(humValue, humComponentId, imei, controller
         const isLinkedSensor = !comp.Setting.sensor_id || comp.Setting.sensor_id === humComponentId;
 
         // Log systématique pour chaque vanne (même si elle ne déclenche pas)
-        console.log(
+        logger.info(
             `[AUTO] ${comp.label} | auto=${autoMode} | hum=${humValue}% | seuil=${threshold}%` +
             ` | déjàActif=${!!isAlreadyActive} | capteurLié=${isLinkedSensor}`
         );
@@ -451,16 +451,16 @@ async function runAutoIrrigationCheck(humValue, humComponentId, imei, controller
         const freshTimer = freshComp ? freshComp.timer_end : comp.timer_end;
         isAlreadyActive = freshTimer && new Date(freshTimer) > new Date();
 
-        if (isAlreadyActive) { console.log(`[AUTO] ⏳ ${comp.label} déjà actif, on attend.`); continue; }
+        if (isAlreadyActive) { logger.info(`[AUTO] ⏳ ${comp.label} déjà actif, on attend.`); continue; }
 
         if (humValue < threshold) {
-            console.log(`[AUTO] 💧 ${humValue}% < ${threshold}% → Ouverture de ${comp.label}`);
+            logger.info(`[AUTO] 💧 ${humValue}% < ${threshold}% → Ouverture de ${comp.label}`);
 
             const cmd = `${comp.pin_number},0`; // 0 = OUVRIR
             const success = sendCommand(imei, cmd);
 
             if (!success) {
-                console.warn(`[AUTO] ⚠️ boîtier ${imei} hors ligne, TCP non mis en file (mais sauvegarde DB maintenue pour simulation).`);
+                logger.warn(`[AUTO] ⚠️ boîtier ${imei} hors ligne, TCP non mis en file (mais sauvegarde DB maintenue pour simulation).`);
             }
 
             const duration = comp.Setting.irrigation_duration ?? 300;
@@ -486,14 +486,14 @@ async function runAutoIrrigationCheck(humValue, humComponentId, imei, controller
                             event_type: 'IRRIGATION_AUTO',
                             description: `Fermeture auto: ${comp.label}`
                         });
-                        console.log(`[AUTO] 🔒 Fermeture auto de ${comp.label}`);
+                        logger.info(`[AUTO] 🔒 Fermeture auto de ${comp.label}`);
                     }
                 } catch (err) {
-                    console.error('[AUTO] Erreur fermeture auto:', err.message);
+                    logger.error(`[AUTO] Erreur fermeture auto: ${err.message}`);
                 }
             }, duration * 1000);
         } else {
-            console.log(`[AUTO] ✅ ${humValue}% >= ${threshold}% → pas d'arrosage nécessaire.`);
+            logger.info(`[AUTO] ✅ ${humValue}% >= ${threshold}% → pas d'arrosage nécessaire.`);
         }
     }
 }
@@ -531,16 +531,16 @@ async function restoreTimersOnStartup() {
                             if (freshComp && freshComp.timer_end && Math.abs(freshComp.timer_end.getTime() - timerVal) < 1000) {
                                 sendCommand(comp.Controller.imei, `${comp.pin_number},1`); // 1 = FERMER
                                 await freshComp.update({ timer_end: null });
-                                console.log(`[AUTO] 🔒 Fermeture auto exécutée par récupération mémoire pour ${comp.label}`);
+                                logger.info(`[AUTO] 🔒 Fermeture auto exécutée par récupération mémoire pour ${comp.label}`);
                             }
                         } catch (e) {
-                            console.error('[TCP] Erreur récupération timer :', e.message);
+                            logger.error(`[TCP] Erreur récupération timer : ${e.message}`);
                         }
                     }, remainingMs);
                     restoredCount++;
                 } else {
                     // Le minuteur est périmé (le serveur était éteint trop longtemps), on ferme la vanne d'urgence !
-                    console.log(`[TCP] ⚠️ Minuteur périmé détecté pour ${comp.label}. Ordre de fermeture forcé envoyé.`);
+                    logger.info(`[TCP] ⚠️ Minuteur périmé détecté pour ${comp.label}. Ordre de fermeture forcé envoyé.`);
                     if(comp.Controller) {
                         sendCommand(comp.Controller.imei, `${comp.pin_number},1`);
                     }
@@ -549,10 +549,10 @@ async function restoreTimersOnStartup() {
             }
         }
         if (restoredCount > 0) {
-            console.log(`[RECOVERY] ⏳ ${restoredCount} minuteurs d'arrosage auto récupérés et reprogrammés en mémoire !`);
+            logger.info(`[RECOVERY] ⏳ ${restoredCount} minuteurs d'arrosage auto récupérés et reprogrammés en mémoire !`);
         }
     } catch (err) {
-        console.error(`[RECOVERY] Erreur récupération des timers:`, err.message);
+        logger.error(`[RECOVERY] Erreur récupération des timers: ${err.message}`);
     }
 }
 

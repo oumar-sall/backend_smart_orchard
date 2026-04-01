@@ -13,6 +13,8 @@ const Component   = require('./component')(sequelize);
 const Reading     = require('./reading')(sequelize);
 const Setting     = require('./setting')(sequelize);
 const ActivityLog = require('./activityLog')(sequelize);
+const User        = require('./user')(sequelize);
+const Access      = require('./access')(sequelize);
 
 // ── Associations ────────────────────────────────────────────────
 
@@ -31,6 +33,20 @@ Setting.belongsTo(Component, { foreignKey: 'component_id' });
 // Controller → ActivityLog (1-N)
 Controller.hasMany(ActivityLog, { foreignKey: 'controller_id', onDelete: 'CASCADE' });
 ActivityLog.belongsTo(Controller, { foreignKey: 'controller_id' });
+ 
+// ── Associations d'accès Utilisateurs ───────────────────────────
+ 
+// User ↔ Controller (M:N via Access)
+User.belongsToMany(Controller, { through: Access, foreignKey: 'user_id' });
+Controller.belongsToMany(User, { through: Access, foreignKey: 'controller_id' });
+ 
+// Access → User (N-1)
+Access.belongsTo(User, { foreignKey: 'user_id' });
+User.hasMany(Access, { foreignKey: 'user_id' });
+ 
+// Access → Controller (N-1)
+Access.belongsTo(Controller, { foreignKey: 'controller_id' });
+Controller.hasMany(Access, { foreignKey: 'controller_id', onDelete: 'CASCADE' });
 
 // ── Export ───────────────────────────────────────────────────────
 module.exports = {
@@ -40,4 +56,6 @@ module.exports = {
     Reading,
     Setting,
     ActivityLog,
+    User,
+    Access,
 };
