@@ -89,6 +89,57 @@ const AuthController = {
             logger.error('Erreur verify-otp:', err);
             res.status(500).json({ error: 'Erreur serveur' });
         }
+    },
+
+    /**
+     * @desc Mettre à jour le profil (Nom/Prénom)
+     */
+    async updateProfile(req, res) {
+        try {
+            const { first_name, last_name } = req.body;
+            if (!first_name || !last_name) {
+                return res.status(400).json({ error: 'Nom et prénom requis' });
+            }
+
+            const user = await User.findByPk(req.user.id);
+            if (!user) {
+                return res.status(404).json({ error: 'Utilisateur non trouvé' });
+            }
+
+            await user.update({ first_name, last_name });
+
+            res.json({
+                message: 'Profil mis à jour',
+                user: {
+                    id: user.id,
+                    phone: user.phone,
+                    first_name: user.first_name,
+                    last_name: user.last_name
+                }
+            });
+        } catch (err) {
+            logger.error('Erreur updateProfile:', err);
+            res.status(500).json({ error: 'Erreur serveur' });
+        }
+    },
+
+    /**
+     * @desc Supprimer le compte utilisateur
+     */
+    async deleteAccount(req, res) {
+        try {
+            const user = await User.findByPk(req.user.id);
+            if (!user) {
+                return res.status(404).json({ error: 'Utilisateur non trouvé' });
+            }
+
+            // Supprimer l'utilisateur (CASCADE supprimera ses entrées Access)
+            await user.destroy();
+            res.json({ message: 'Compte supprimé avec succès' });
+        } catch (err) {
+            logger.error('Erreur deleteAccount:', err);
+            res.status(500).json({ error: 'Erreur serveur' });
+        }
     }
 };
 

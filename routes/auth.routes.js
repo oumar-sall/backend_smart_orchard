@@ -2,16 +2,11 @@ const express = require('express');
 const router = express.Router();
 const AuthController = require('../controllers/auth.controller');
 
-/**
- * @route POST /auth/send-otp
- * @desc Générer et "envoyer" un code OTP (affichage console)
- */
-router.post('/send-otp', AuthController.sendOTP);
+const { authenticateToken } = require('../middlewares/auth.middleware');
 
-/**
- * @route POST /auth/verify-otp
- * @desc Vérifier l'OTP et retourner un JWT
- */
+router.post('/send-otp', AuthController.sendOTP);
 router.post('/verify-otp', AuthController.verifyOTP);
+router.put('/update-profile', authenticateToken, AuthController.updateProfile);
+router.delete('/delete-account', authenticateToken, AuthController.deleteAccount);
 
 module.exports = router;
