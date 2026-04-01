@@ -102,9 +102,29 @@ const ControllerController = {
             if (!controller) {
                 return res.status(404).json({ error: 'Contrôleur non trouvé' });
             }
-            // Cascade delete handled by Sequelize associations with onDelete: 'CASCADE'
             await controller.destroy();
             res.json({ success: true, message: 'Contrôleur supprimé avec succès' });
+        } catch (err) {
+            next(err);
+        }
+    },
+
+    async searchByImei(req, res, next) {
+        try {
+            const { imei } = req.query;
+            if (!imei) {
+                return res.status(400).json({ error: 'IMEI requis' });
+            }
+            const controller = await Controller.findOne({ 
+                where: { imei },
+                attributes: ['id', 'name', 'imei'] // Pas de security_pin ici
+            });
+            
+            if (!controller) {
+                return res.status(404).json({ error: 'Aucun contrôleur trouvé avec cet IMEI' });
+            }
+            
+            res.json(controller);
         } catch (err) {
             next(err);
         }

@@ -313,6 +313,18 @@ const ReadingController = {
                 targetControllerId = controller.id;
             }
 
+            // Vérifier si le PIN est déjà utilisé sur ce contrôleur
+            const existing = await Component.findOne({
+                where: {
+                    controller_id: targetControllerId,
+                    pin_number
+                }
+            });
+
+            if (existing) {
+                return res.status(400).json({ error: `Le Pin ${pin_number} est déjà utilisé par "${existing.label}"` });
+            }
+
             const newComponent = await Component.create({
                 controller_id: targetControllerId,
                 type,
@@ -331,6 +343,46 @@ const ReadingController = {
             res.json(newComponent);
         } catch (err) {
             console.error('[Controller] Error creating component:', err);
+            next(err);
+        }
+    },
+
+    async updateComponent(req, res, next) {
+        try {
+            const { id } = req.params;
+            const { pin_number, label, unit, min_value, max_value } = req.body;
+
+            const component = await Component.findByPk(id);
+            if (!component) {
+                return res.status(404).json({ error: 'Composant introuvable' });
+            }
+
+            // Si le PIN change, vérifier qu'il est libre
+            if (pin_number && pin_number !== component.pin_number) {
+                const existing = await Component.findOne({
+                    where: {
+                        controller_id: component.controller_id,
+                        pin_number,
+                        id: { [Op.ne]: id } // On ignore le composant actuel
+                    }
+                });
+
+                if (existing) {
+                    return res.status(400).json({ error: `Le Pin ${pin_number} est déjà utilisé par "${existing.label}"` });
+                }
+            }
+
+            await component.update({
+                pin_number: pin_number || component.pin_number,
+                label: label || component.label,
+                unit: unit !== undefined ? unit : component.unit,
+                min_value: min_value !== undefined ? min_value : component.min_value,
+                max_value: max_value !== undefined ? max_value : component.max_value
+            });
+
+            res.json({ success: true, message: 'Composant mis à jour avec succès', component });
+        } catch (err) {
+            console.error('[Controller] Error updating component:', err);
             next(err);
         }
     },

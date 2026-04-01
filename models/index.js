@@ -40,13 +40,15 @@ ActivityLog.belongsTo(Controller, { foreignKey: 'controller_id' });
 User.belongsToMany(Controller, { through: Access, foreignKey: 'user_id' });
 Controller.belongsToMany(User, { through: Access, foreignKey: 'controller_id' });
  
-// Access → User (N-1)
-Access.belongsTo(User, { foreignKey: 'user_id' });
-User.hasMany(Access, { foreignKey: 'user_id' });
- 
-// Access → Controller (N-1)
-Access.belongsTo(Controller, { foreignKey: 'controller_id' });
 Controller.hasMany(Access, { foreignKey: 'controller_id', onDelete: 'CASCADE' });
+ 
+// User → Access (1-N)
+User.hasMany(Access, { foreignKey: 'user_id', onDelete: 'CASCADE' });
+Access.belongsTo(User, { foreignKey: 'user_id' });
+
+// User → ActivityLog (1-N)
+User.hasMany(ActivityLog, { foreignKey: 'user_id', onDelete: 'CASCADE' });
+ActivityLog.belongsTo(User, { foreignKey: 'user_id' });
 
 // ── Export ───────────────────────────────────────────────────────
 module.exports = {

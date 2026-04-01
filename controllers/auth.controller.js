@@ -12,6 +12,7 @@ const AuthController = {
      * @desc Générer et "envoyer" un code OTP (affichage console)
      */
     async sendOTP(req, res) {
+        console.log('--- REQUÊTE sendOTP REÇUE ---', req.body); // Debug immédiat
         try {
             const { phone } = req.body;
 
@@ -133,12 +134,13 @@ const AuthController = {
                 return res.status(404).json({ error: 'Utilisateur non trouvé' });
             }
 
-            // Supprimer l'utilisateur (CASCADE supprimera ses entrées Access)
+            // Supprimer l'utilisateur (CASCADE supprimera ses entrées Access et ActivityLog si lié)
             await user.destroy();
             res.json({ message: 'Compte supprimé avec succès' });
         } catch (err) {
-            logger.error('Erreur deleteAccount:', err);
-            res.status(500).json({ error: 'Erreur serveur' });
+            console.error('ERREUR CRITIQUE deleteAccount:', err); // Log plus visible
+            logger.error('Erreur deleteAccount detail:', err);
+            res.status(500).json({ error: 'Erreur serveur lors de la suppression' });
         }
     }
 };
