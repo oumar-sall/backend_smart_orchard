@@ -12,6 +12,7 @@ router.get('/sensors', ReadingController.getSensors);
 router.post('/irrigation', ReadingController.toggleIrrigation);
 router.post('/simulate', ReadingController.simulateHumidity); // 🧪 Test seuil auto
 router.post('/components', ReadingController.createComponent);
+router.put('/components/:id', ReadingController.updateComponent);
 router.delete('/components/:id', ReadingController.deleteComponent);
 
 // Paramètres
