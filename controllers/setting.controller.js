@@ -65,7 +65,7 @@ const SettingController = {
 
                 res.json(settings);
             } else {
-                res.status(404).json({ error: `Settings for pin ${targetPin} not found` });
+                res.status(404).json({ error: `Settings for pin ${pin} not found` });
             }
         } catch (err) {
             next(err);
