@@ -31,7 +31,8 @@ const ControllerController = {
 
     async create(req, res, next) {
         try {
-            const { name, imei, security_pin } = req.body;
+            const { name, imei: rawImei, security_pin } = req.body;
+            const imei = rawImei?.trim();
             if (!name || !imei || !security_pin) {
                 return res.status(400).json({ error: 'Nom, IMEI et PIN de sécurité requis' });
             }
@@ -111,7 +112,8 @@ const ControllerController = {
 
     async searchByImei(req, res, next) {
         try {
-            const { imei } = req.query;
+            const { imei: rawImei } = req.query;
+            const imei = rawImei?.trim();
             if (!imei) {
                 return res.status(400).json({ error: 'IMEI requis' });
             }
