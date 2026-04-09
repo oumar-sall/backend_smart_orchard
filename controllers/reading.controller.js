@@ -395,6 +395,9 @@ const ReadingController = {
                 return res.status(404).json({ error: 'Composant introuvable' });
             }
 
+            // Manually reset any sensors using this component as their trigger
+            await Setting.update({ sensor_id: null }, { where: { sensor_id: id } });
+
             await component.destroy();
             res.json({ success: true, message: 'Composant supprimé avec succès' });
         } catch (err) {
