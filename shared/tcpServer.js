@@ -302,7 +302,6 @@ function sendCommand(imei, command) {
     // On injecte donc une commande fantôme "PING" sacrificielle qui absorbera le bug du boîtier.
     if (qc.queue.length === 0 && !qc.isProcessing) {
         qc.queue.push("PING");
-        logger.info(`[TCP] 🛡️ Commande fantôme PING injectée pour protéger la commande ${command}`);
     }
 
     qc.queue.push(command);
@@ -342,7 +341,6 @@ async function processQueue(imei) {
                 if (socket.pendingAck) {
                     packet = Buffer.concat([packet, socket.pendingAck]);
                     socket.pendingAck = null;
-                    logger.info(`[TCP] 🔗 ACK attaché en toute sécurité à la fin de la commande ${command}.`);
                 }
 
                 socket.write(packet);
@@ -436,11 +434,7 @@ async function runAutoIrrigationCheck(humValue, humComponentId, imei, controller
         let isAlreadyActive = comp.timer_end && new Date(comp.timer_end) > new Date();
         const isLinkedSensor = !comp.Setting.sensor_id || comp.Setting.sensor_id === humComponentId;
 
-        // Log systématique pour chaque vanne (même si elle ne déclenche pas)
-        logger.info(
-            `[AUTO] ${comp.label} | auto=${autoMode} | hum=${humValue}% | seuil=${threshold}%` +
-            ` | déjàActif=${!!isAlreadyActive} | capteurLié=${isLinkedSensor}`
-        );
+        // Log supprimé pour plus de clarté
 
         if (!autoMode) continue;
         if (!isLinkedSensor) continue;
@@ -451,7 +445,7 @@ async function runAutoIrrigationCheck(humValue, humComponentId, imei, controller
         const freshTimer = freshComp ? freshComp.timer_end : comp.timer_end;
         isAlreadyActive = freshTimer && new Date(freshTimer) > new Date();
 
-        if (isAlreadyActive) { logger.info(`[AUTO] ⏳ ${comp.label} déjà actif, on attend.`); continue; }
+        if (isAlreadyActive) { continue; }
 
         if (humValue < threshold) {
             logger.info(`[AUTO] 💧 ${humValue}% < ${threshold}% → Ouverture de ${comp.label}`);
@@ -493,7 +487,7 @@ async function runAutoIrrigationCheck(humValue, humComponentId, imei, controller
                 }
             }, duration * 1000);
         } else {
-            logger.info(`[AUTO] ✅ ${humValue}% >= ${threshold}% → pas d'arrosage nécessaire.`);
+            // Pas d'arrosage nécessaire (log supprimé)
         }
     }
 }
@@ -505,6 +499,7 @@ module.exports = {
     runAutoIrrigationCheck,
     restoreTimersOnStartup,
 };
+
 
 // -------------------------------------------------------------
 // REPRISE DES FERMETURES AUTO APRÈS REDÉMARRAGE DU SERVEUR

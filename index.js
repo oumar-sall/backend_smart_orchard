@@ -25,18 +25,23 @@ app.use('/auth', authRoutes);
 app.use(errorHandler);
 
 // ── Démarrage ────────────────────────────────────────────────────
-sequelize.sync({ alter: true }).then(async () => {
+sequelize.sync().then(async () => {
 
-    logger.info('Base de données synchronisée (avec ajout de colonnes si nécessaire).');
+    logger.info('✅ Base de données synchronisée.');
 
     // On ne démarre le serveur TCP qu'une fois la base prête
-    const tcpServer = require('./shared/tcpServer');
-    await tcpServer.restoreTimersOnStartup();
-    logger.info('Serveur TCP prêt et timers restaurés.');
+    try {
+        const tcpServer = require('./shared/tcpServer');
+        await tcpServer.restoreTimersOnStartup();
+        logger.info('🚀 Serveur TCP prêt et timers restaurés sur le port 5000.');
+    } catch (tcpErr) {
+        logger.error('❌ Erreur lors du démarrage du serveur TCP :', tcpErr);
+    }
 
     app.listen(3000, '0.0.0.0', () => {
-        logger.info('🚀 Serveur Backend démarré sur http://0.0.0.0:3000');
+        logger.info('🌐 Serveur Backend (API) démarré sur le port 3000');
     });
 }).catch((err) => {
-    logger.error('Erreur de connexion à la base de données :', err);
+    logger.error('💥 ERREUR CRITIQUE DE SYNCHRONISATION DB :', err);
+    console.error(err);
 });

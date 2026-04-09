@@ -1,5 +1,7 @@
-const { Controller, Component, Reading, Setting, ActivityLog, Access, User } = require('../models');
+const { Controller, User, Access } = require('../models');
 const logger = require('../shared/logger');
+
+const joinOtpStore = new Map(); // Store OTPs for joining: IMEI_UserID -> { otp, expires }
 
 const ControllerController = {
     async getAll(req, res, next) {
@@ -8,7 +10,7 @@ const ControllerController = {
             const user = await User.findByPk(req.user.id, {
                 include: [{
                     model: Controller,
-                    through: { attributes: [] } // On ne veut pas les stats de la table Pivot
+                    through: { attributes: [] } 
                 }]
             });
             res.json(user.Controllers || []);
@@ -31,20 +33,31 @@ const ControllerController = {
 
     async create(req, res, next) {
         try {
-            const { name, imei: rawImei, security_pin } = req.body;
+            const { name, imei: rawImei, join_otp } = req.body;
             const imei = rawImei?.trim();
-            if (!name || !imei || !security_pin) {
-                return res.status(400).json({ error: 'Nom, IMEI et PIN de sécurité requis' });
+            if (!name || !imei) {
+                return res.status(400).json({ error: 'Nom et IMEI requis' });
+            }
+
+            // 1. Toujours vérifier le PIN dynamique (OTP SMS)
+            const stored = joinOtpStore.get(`${imei}_${req.user.id}`);
+            if (!stored || stored.otp !== join_otp) {
+                return res.status(403).json({ error: 'Code SMS invalide ou expiré' });
+            }
+            if (stored.expires < Date.now()) {
+                joinOtpStore.delete(`${imei}_${req.user.id}`);
+                return res.status(403).json({ error: 'Code SMS expiré' });
             }
 
             // Vérifier si le contrôleur existe déjà
             let controller = await Controller.findOne({ where: { imei } });
 
             if (controller) {
-                // Si le contrôleur existe, on vérifie le PIN pour l'associer à ce nouvel utilisateur
-                if (controller.security_pin !== security_pin) {
-                    return res.status(403).json({ error: 'PIN de sécurité incorrect pour ce boîtier' });
-                }
+                // --- LOGIQUE DE REJOINDRE (EXISTANT) ---
+                
+
+
+
 
                 // Vérifier si l'accès existe déjà
                 const existingAccess = await Access.findOne({
@@ -54,19 +67,20 @@ const ControllerController = {
                 if (existingAccess) {
                     return res.status(400).json({ error: 'Vous avez déjà accès à ce contrôleur' });
                 }
+
+                // Nettoyage de l'OTP
+            joinOtpStore.delete(`${imei}_${req.user.id}`);
+
             } else {
-                // Si c'est un nouveau contrôleur, on le crée
-                // Note: Dans un vrai flux, on pourrait vouloir valider que l'IMEI est valide avant.
-                // Ici, le premier qui l'ajoute définit le PIN (ou utilise le PIN par défaut).
+                // --- LOGIQUE DE CRÉATION (NOUVEAU) ---
                 controller = await Controller.create({ 
                     name, 
-                    imei, 
-                    security_pin: security_pin // On utilise le PIN fourni comme PIN initial
+                    imei
                 });
-                logger.info(`[DB] Nouveau contrôleur créé : ${name} (${imei})`);
+                logger.info(`[DB] Nouveau contrôleur créé : ${name} (${imei}) par ${req.user.phone}`);
             }
 
-            // Créer le lien d'accès
+            // Créer le lien d'accès (propriétaire ou membre)
             await Access.create({
                 user_id: req.user.id,
                 controller_id: controller.id
@@ -82,12 +96,14 @@ const ControllerController = {
 
     async update(req, res, next) {
         try {
-            const { name, imei } = req.body;
+            const { name } = req.body;
             const controller = await Controller.findByPk(req.params.id);
             if (!controller) {
                 return res.status(404).json({ error: 'Contrôleur non trouvé' });
             }
-            await controller.update({ name, imei });
+
+            const updateData = { name };
+            await controller.update(updateData);
             res.json(controller);
         } catch (err) {
             if (err.name === 'SequelizeUniqueConstraintError') {
@@ -103,6 +119,7 @@ const ControllerController = {
             if (!controller) {
                 return res.status(404).json({ error: 'Contrôleur non trouvé' });
             }
+            // Ici, on pourrait aussi restreindre la suppression au proprio
             await controller.destroy();
             res.json({ success: true, message: 'Contrôleur supprimé avec succès' });
         } catch (err) {
@@ -117,16 +134,47 @@ const ControllerController = {
             if (!imei) {
                 return res.status(400).json({ error: 'IMEI requis' });
             }
-            const controller = await Controller.findOne({ 
+
+            const smsService = require('../shared/sms');
+            const { clients } = require('../shared/tcpServer');
+
+            // 1. Chercher en base de données
+            let controller = await Controller.findOne({ 
                 where: { imei },
-                attributes: ['id', 'name', 'imei'] // Pas de security_pin ici
+                attributes: ['id', 'name', 'imei'] 
             });
             
+            let isNew = false;
             if (!controller) {
-                return res.status(404).json({ error: 'Aucun contrôleur trouvé avec cet IMEI' });
+                // 2. Si pas en base, vérifier s'il est connecté au serveur TCP
+                if (clients.has(imei)) {
+                    isNew = true;
+                    // On crée un objet "virtuel" pour le frontend
+                    controller = {
+                        name: 'Nouveau boîtier détecté',
+                        imei: imei,
+                        is_new: true
+                    };
+                } else {
+                    return res.status(404).json({ error: 'Boîtier introuvable ou hors ligne. Assurez-vous qu\'il est allumé.' });
+                }
             }
-            
-            res.json(controller);
+
+            // --- TRIGGER SMS OTP (Nouveau ou Existant) ---
+
+            const otp = Math.floor(100000 + Math.random() * 900000).toString();
+            // TTL 5 minutes
+            joinOtpStore.set(`${imei}_${req.user.id}`, { otp, expires: Date.now() + 5 * 60 * 1000 });
+
+            const sent = smsService.sendSms(req.user.phone, `Code de verification Smart Orchard pour ${controller.name || 'votre boitier'} : ${otp}`);
+
+
+            res.json({ 
+                ...(controller.toJSON ? controller.toJSON() : controller), 
+                sms_sent: sent,
+                debug_otp: sent ? undefined : otp, // Pour test au cas où pas de boîtier
+                is_new: isNew
+            });
         } catch (err) {
             next(err);
         }
