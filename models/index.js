@@ -30,6 +30,10 @@ Reading.belongsTo(Component, { foreignKey: 'component_id' });
 Component.hasOne(Setting, { foreignKey: 'component_id', onDelete: 'CASCADE' });
 Setting.belongsTo(Component, { foreignKey: 'component_id' });
 
+// Setting ↔ Component (Optional sensor reference)
+Setting.belongsTo(Component, { as: 'Sensor', foreignKey: 'sensor_id', onDelete: 'SET NULL' });
+Component.hasMany(Setting, { as: 'AffectedSettings', foreignKey: 'sensor_id', onDelete: 'SET NULL' });
+
 // Controller → ActivityLog (1-N)
 Controller.hasMany(ActivityLog, { foreignKey: 'controller_id', onDelete: 'CASCADE' });
 ActivityLog.belongsTo(Controller, { foreignKey: 'controller_id' });
@@ -49,6 +53,8 @@ Access.belongsTo(User, { foreignKey: 'user_id' });
 // User → ActivityLog (1-N)
 User.hasMany(ActivityLog, { foreignKey: 'user_id', onDelete: 'CASCADE' });
 ActivityLog.belongsTo(User, { foreignKey: 'user_id' });
+
+
 
 // ── Export ───────────────────────────────────────────────────────
 module.exports = {

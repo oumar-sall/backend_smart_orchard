@@ -9,26 +9,55 @@ const otpStore = new Map();
 
 const AuthController = {
     /**
-     * @desc Générer et "envoyer" un code OTP (affichage console)
+     * @desc Connexion instantanee (V1 sans OTP pour le login de base)
      */
-    async sendOTP(req, res) {
-        console.log('--- REQUÊTE sendOTP REÇUE ---', req.body); // Debug immédiat
+    async login(req, res) {
         try {
             const { phone } = req.body;
 
             if (!phone) {
-                return res.status(400).json({ error: 'Numéro de téléphone requis' });
+                return res.status(400).json({ error: 'Numero de telephone requis' });
             }
 
-            // Générer un code à 6 chiffres (fixe pour l'instant comme demandé, mais affiché)
-            const otp = '123456'; 
-            otpStore.set(phone, otp);
+            const jwt = require('jsonwebtoken');
+            const JWT_SECRET = process.env.JWT_SECRET || 'smart-orchard-secret-key-2024';
 
-            logger.info(`[AUTH] 📱 Code OTP pour ${phone} : ${otp}`);
+            // On cherche ou on crée l'utilisateur directement (Connexion Instantanée V1)
+            let [user, created] = await User.findOrCreate({ 
+                where: { phone },
+                defaults: {
+                    first_name: 'Nouveau',
+                    last_name: 'Utilisateur'
+                }
+            });
 
-            res.json({ message: 'Code envoyé (voir console)' });
+            if (created) {
+                logger.info(`[AUTH] ✨ Nouvel utilisateur cree pour ${phone}`);
+            }
+
+            // Génération du token JWT immédiat
+            const token = jwt.sign(
+                { id: user.id, phone: user.phone },
+                JWT_SECRET,
+                { expiresIn: '30d' }
+            );
+
+            logger.info(`[AUTH] 📱 Connexion instantanee pour ${phone}`);
+
+            return res.json({
+                message: created ? 'Compte cree et connecte' : 'Connexion reussie',
+                token,
+                user: {
+                    id: user.id,
+                    phone: user.phone,
+                    first_name: user.first_name,
+                    last_name: user.last_name
+                },
+                alreadyRegistered: !created
+            });
+
         } catch (err) {
-            logger.error('Erreur send-otp:', err);
+            logger.error('Erreur login instantane:', err);
             res.status(500).json({ error: 'Erreur serveur' });
         }
     },
@@ -62,7 +91,6 @@ const AuthController = {
                 // On crée un utilisateur minimal, il complétera son profil après
                 user = await User.create({
                     phone,
-                    password: 'temporary-password',
                     first_name: 'Nouveau',
                     last_name: 'Utilisateur'
                 });
