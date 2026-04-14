@@ -8,36 +8,33 @@ const ReadingController = {
             const { controller_id } = req.query;
             const componentWhere = controller_id ? { controller_id } : {};
 
-            // Find the most recent reading for each component and map it
-            const latestReadings = await Reading.findAll({
-                include: [{
-                    model: Component,
-                    attributes: ['type', 'pin_number', 'label', 'unit', 'min_value', 'max_value'],
-                    where: componentWhere
-                }],
-                order: [['created_at', 'DESC']],
-                limit: 50 // We just pull the recent ones to extract the latest distinctive metrics
+            // Fetch all sensors for this controller
+            const sensors = await Component.findAll({
+                where: { 
+                    type: 'sensor',
+                    ...componentWhere
+                },
+                attributes: ['id', 'label', 'pin_number', 'unit', 'min_value', 'max_value']
             });
-
-            const sensorsMap = {};
-
-            for (const reading of latestReadings) {
-                if (reading.Component && reading.Component.type === 'sensor') {
-                    const pin = reading.Component.pin_number;
-                    if (!sensorsMap[pin]) {
-                        sensorsMap[pin] = {
-                            id: pin,
-                            title: reading.Component.label,
-                            value: reading.value,
-                            unit: reading.Component.unit || '',
-                            min: reading.Component.min_value ?? 0,
-                            max: reading.Component.max_value ?? 100,
-                        };
-                    }
-                }
-            }
             
-            const sensorsList = Object.values(sensorsMap);
+            const sensorsList = [];
+
+            for (const sensor of sensors) {
+                // Find the absolute latest reading for this specific component
+                const latestReading = await Reading.findOne({
+                    where: { component_id: sensor.id },
+                    order: [['created_at', 'DESC']]
+                });
+
+                sensorsList.push({
+                    id: sensor.id,
+                    title: sensor.label,
+                    value: latestReading ? latestReading.value : '--',
+                    unit: sensor.unit || '',
+                    min: sensor.min_value ?? 0,
+                    max: sensor.max_value ?? 100,
+                });
+            }
 
             // Fetch ALL actuators and their irrigation status for THIS controller
             const allActuators = await Component.findAll({
@@ -436,7 +433,6 @@ const ReadingController = {
                 return res.status(404).json({ error: `Composant '${targetPin}' introuvable` });
             }
 
-            console.log(`[SIMULATE] 🧪 Injection humidité simulée: ${humidity}% sur capteur '${targetPin}'`);
 
             const tcpServer = require('../shared/tcpServer');
             await tcpServer.runAutoIrrigationCheck(humidity, humComp.id, controller.imei, controller);
