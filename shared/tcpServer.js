@@ -80,70 +80,77 @@ const server = net.createServer((socket) => {
                     if (socket.imei) ackEmitter.emit(`ack_${socket.imei}`);
                 }
                 for (const data of records) {
-                    // Si on trouve l'IMEI dans cette trame, on le mémorise pour la session
                     if (data.imei) {
                         socket.imei = data.imei;
                         clients.set(socket.imei, socket);
-                        // console.log(`[TCP] IMEI ${socket.imei} associé à cette session. Clients actifs: ${clients.size}`);
                     }
                     if (!socket.imei) continue;
 
-                    const finalTemp = data.temp ?? data.temp1 ?? data.modbus0;
-                    const finalHum = data.hum ?? data.temp2 ?? data.modbus1;
+                    try {
+                        const controller = await Controller.findOne({
+                            where: { imei: socket.imei },
+                            include: [{
+                                model: Component,
+                                include: [Setting]
+                            }]
+                        });
 
-                    logger.debug(`[TRAME] IMEI=${socket.imei} | temp=${finalTemp ?? 'N/A'} | hum=${finalHum ?? 'N/A'}`);
-
-                    if (finalTemp !== undefined || finalHum !== undefined) {
-                        // Sauvegarde DB (async/await)
-                        try {
-                            const controller = await Controller.findOne({
-                                where: { imei: socket.imei },
-                                include: [{
-                                    model: Component,
-                                    include: [Setting] // Important pour l'arrosage auto
-                                }]
-                            });
-
-                            if (!controller) {
-                                logger.warn(`[DB] Contrôleur introuvable pour IMEI: ${socket.imei}`);
-                                continue;
-                            }
-
-                            if (!controller.Components || controller.Components.length === 0) {
-                                logger.warn(`[DB] ⚠️ Aucun composant trouvé pour le contrôleur ${controller.name} (ID: ${controller.id})`);
-                            }
-
-                            // Conversion du timestamp (secondes depuis 01/01/1970) en Date valide pour MySql
-                            const recordDate = data.timestamp ? new Date(data.timestamp * 1000) : new Date();
-
-                            if (finalTemp !== undefined) {
-                                // On cherche par l'appellation stricte de l'enum (ex: '485 A')
-                                const tempPin = PINS.TEMP;
-                                const tempComp = controller.Components.find(c => c.pin_number === tempPin);
-                                if (tempComp) {
-                                    await Reading.create({ component_id: tempComp.id, value: finalTemp, created_at: recordDate });
-                                } else {
-                                    logger.warn(`[DB] ⚠️ Aucun composant configuré sur la broche '${tempPin}' (utilisée pour temp/modbus0)`);
-                                }
-                            }
-
-                            if (finalHum !== undefined) {
-                                // On cherche par l'appellation stricte de l'enum (ex: '485 B')
-                                const humPin = PINS.HUM;
-                                const humComp = controller.Components.find(c => c.pin_number === humPin);
-
-                                if (humComp) {
-                                    await Reading.create({ component_id: humComp.id, value: finalHum, created_at: recordDate });
-
-                                    // --- LOGIQUE D'ARROSAGE AUTOMATIQUE ---
-                                    await runAutoIrrigationCheck(finalHum, humComp.id, socket.imei, controller);
-                                } else {
-                                    logger.warn(`[DB] ⚠️ Aucun composant configuré sur la broche '${humPin}' (utilisée pour hum/modbus1)`);
-                                }
-                            }
-                        } catch (e) {
-                            logger.error(`[DB] Erreur: ${e.message}`);
+                        if (!controller) {
+                            logger.warn(`[DB] Contrôleur introuvable pour IMEI: ${socket.imei}`);
+                            continue;
                         }
+
+                        const recordDate = data.timestamp ? new Date(data.timestamp * 1000) : new Date();
+
+                        // PARCOUR COMPOSANTS DYNAMIQUE
+                        for (const comp of controller.Components) {
+                            if (comp.type !== 'sensor') continue;
+
+                            let rawValue = undefined;
+                            
+                            // Mapping intelligent Pin -> Data Tag
+                            const pinMap = {
+                                'IN 0': data.v0 ?? data.in0,
+                                'IN 1': data.v1 ?? data.in1,
+                                'IN 2': data.v2 ?? data.in2,
+                                'IN 3': data.v3 ?? data.in3,
+                                'IN 4': data.v4,
+                                'IN 5': data.v5,
+                                'VOL 0': data.v0, 
+                                'VOL 1': data.v1,
+                                'VOL 2': data.v2,
+                                'VOL 3': data.v3,
+                                'VOL 4': data.v4,
+                                'VOL 5': data.v5,
+                                '485 A': data.temp ?? data.temp1 ?? data.modbus0,
+                                '485 B': data.hum ?? data.temp2 ?? data.modbus1,
+                                '1-WIRE': data.tempW,
+                            };
+
+                            rawValue = pinMap[comp.pin_number];
+
+                            if (rawValue !== undefined) {
+                                let finalValue = rawValue;
+
+                                // --- CALIBRAGE GENERIQUE (UNIQUEMENT POUR LES PORTS IN OU VOL) ---
+                                // On applique le calcul de tension sur les pins analogiques 'IN X' ou 'VOL X'
+                                // si min/max sont définis.
+                                if ((comp.pin_number.startsWith('IN ') || comp.pin_number.startsWith('VOL ')) && comp.min_value !== null && comp.max_value !== null) {
+                                    // f(x) = min + (x / 10000) * (max - min)
+                                    finalValue = comp.min_value + (rawValue / 10000) * (comp.max_value - comp.min_value);
+                                    finalValue = Math.round(finalValue * 10) / 10;
+                                }
+
+                                await Reading.create({ component_id: comp.id, value: finalValue, created_at: recordDate });
+
+                                // Logique spécifique Humidité (Arrosage Auto)
+                                if (comp.pin_number === PINS.HUM || comp.label?.toLowerCase().includes('humidité')) {
+                                    await runAutoIrrigationCheck(finalValue, comp.id, socket.imei, controller);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        logger.error(`[DB] Erreur traitement trame: ${e.message}`);
                     }
                 }
             } catch (err) {
@@ -155,13 +162,8 @@ const server = net.createServer((socket) => {
     });
 
     socket.on('close', () => {
-        if (socket.imei) {
-            // Sécurité : on ne retire du Map que SI c'est cette socket précise qui est enregistrée.
-            // (Évite qu'une ancienne socket qui ferme tardivement ne déconnecte une nouvelle session valide)
-            if (clients.get(socket.imei) === socket) {
-                clients.delete(socket.imei);
-            }
-            console.log(`📡 Déconnexion boîtier (IMEI: ${socket.imei}). Clients restants: ${clients.size}`);
+        if (socket.imei && clients.has(socket.imei)) {
+            clients.delete(socket.imei);
         }
     });
 
@@ -185,9 +187,11 @@ function decodeGalileo(buffer) {
         0x01: 1, 0x02: 1, 0x03: 15, 0x04: 2, 0x10: 2, 0x11: 1,
         0x14: 2, 0x15: 2, 0x20: 4, 0x29: 1, 0x30: 9, 0x33: 4,
         0x34: 2, 0x35: 1, 0x3a: 2, 0x3b: 2, 0x40: 2, 0x41: 2,
-        0x42: 2, 0x43: 2, 0x47: 1, 0x49: 1, 0x50: 4, 0x51: 4,
-        0x52: 4, 0x54: 2, 0x55: 1, 0x60: 2, 0x61: 2, 0x6E: 1,
-        0x90: 2, 0x91: 2, 0xE0: 4
+        0x42: 2, 0x43: 2, 0x46: 2, 0x47: 1, 0x49: 1, 0x4a: 1, 
+        0x4b: 1, 0x4c: 1, 0x50: 2, 0x51: 2, 0x52: 2, 0x53: 2, 
+        0x54: 2, 0x55: 2, 0x58: 2, 0x59: 2, 0x5a: 2, 0x5b: 2, 
+        0x5c: 2, 0x5d: 2, 0x5e: 2, 0x5f: 2, 0x60: 2, 0x61: 2, 
+        0x6E: 1, 0x90: 2, 0x91: 2, 0xE0: 2
     };
 
     while (offset < totalDataLength) {
@@ -234,6 +238,21 @@ function decodeGalileo(buffer) {
                 offset = endOfFeTag;
                 break;
 
+            case 0x30: // État entrées + Analogiques 0-3 (9 octets)
+                currentRecord.inputsStatus = buffer[offset++];
+                currentRecord.in0 = buffer.readUInt16LE(offset); offset += 2;
+                currentRecord.in1 = buffer.readUInt16LE(offset); offset += 2;
+                currentRecord.in2 = buffer.readUInt16LE(offset); offset += 2;
+                currentRecord.in3 = buffer.readUInt16LE(offset); offset += 2;
+                break;
+
+            case 0x50: currentRecord.v0 = buffer.readUInt16LE(offset); offset += 2; break;
+            case 0x51: currentRecord.v1 = buffer.readUInt16LE(offset); offset += 2; break;
+            case 0x52: currentRecord.v2 = buffer.readUInt16LE(offset); offset += 2; break;
+            case 0x53: currentRecord.v3 = buffer.readUInt16LE(offset); offset += 2; break;
+            case 0x54: currentRecord.v4 = buffer.readUInt16LE(offset); offset += 2; break;
+            case 0x55: currentRecord.v5 = buffer.readUInt16LE(offset); offset += 2; break;
+
             case 0x90:
                 currentRecord.modbus0 = buffer.readInt16LE(offset) / 10;
                 offset += 2;
@@ -244,7 +263,16 @@ function decodeGalileo(buffer) {
                 offset += 2;
                 break;
 
-            case 0xE0: // État des entrées (Inputs)
+            case 0x58: currentRecord.in0 = buffer.readUInt16LE(offset); offset += 2; break;
+            case 0x59: currentRecord.in1 = buffer.readUInt16LE(offset); offset += 2; break;
+            case 0x5a: currentRecord.in2 = buffer.readUInt16LE(offset); offset += 2; break;
+            case 0x5b: currentRecord.in3 = buffer.readUInt16LE(offset); offset += 2; break;
+            case 0x5c: currentRecord.in4 = buffer.readUInt16LE(offset); offset += 2; break;
+            case 0x5d: currentRecord.in5 = buffer.readUInt16LE(offset); offset += 2; break;
+            case 0x5e: currentRecord.in6 = buffer.readUInt16LE(offset); offset += 2; break;
+            case 0x5f: currentRecord.in7 = buffer.readUInt16LE(offset); offset += 2; break;
+
+            case 0xE0: // État des entrées (Inputs status bitmask)
                 currentRecord.inputs = buffer.readUInt16LE(offset);
                 offset += 2;
                 break;
@@ -498,6 +526,7 @@ module.exports = {
     clients,
     runAutoIrrigationCheck,
     restoreTimersOnStartup,
+    decodeGalileo,
 };
 
 
