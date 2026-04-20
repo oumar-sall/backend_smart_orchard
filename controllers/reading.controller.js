@@ -224,6 +224,7 @@ const ReadingController = {
 
                 await ActivityLog.create({
                     controller_id: controller.id,
+                    user_id: req.user.id,
                     event_type: 'IRRIGATION',
                     description: `${action === 'open' ? 'Ouverture' : 'Fermeture'} manuelle de : ${component.label}`
                 });

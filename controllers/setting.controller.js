@@ -51,6 +51,7 @@ const SettingController = {
                 // Audit Log
                 await ActivityLog.create({
                     controller_id: settings.Component.controller_id,
+                    user_id: req.user.id,
                     event_type: 'SETTINGS_UPDATE',
                     description: `Réglages mis à jour pour : ${settings.Component.label}`
                 });

@@ -1,8 +1,12 @@
 const { Router } = require('express');
 const ReadingController = require('../controllers/reading.controller');
 const SettingController = require('../controllers/setting.controller');
+const { authenticateToken } = require('../middlewares/auth.middleware');
 
 const router = Router();
+
+// Toutes les routes de lecture et commande nécessitent une authentification
+router.use(authenticateToken);
 
 router.get('/dashboard', ReadingController.getLatestDashboard);
 router.get('/history', ReadingController.getHistory);
