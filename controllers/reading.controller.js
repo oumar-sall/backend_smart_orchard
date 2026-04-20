@@ -14,7 +14,7 @@ const ReadingController = {
                     type: 'sensor',
                     ...componentWhere
                 },
-                attributes: ['id', 'label', 'pin_number', 'unit', 'min_value', 'max_value']
+                attributes: ['id', 'label', 'pin_number', 'unit', 'min_value', 'max_value', 'v_min', 'v_max']
             });
             
             const sensorsList = [];
@@ -224,6 +224,7 @@ const ReadingController = {
 
                 await ActivityLog.create({
                     controller_id: controller.id,
+                    user_id: req.user.id,
                     event_type: 'IRRIGATION',
                     description: `${action === 'open' ? 'Ouverture' : 'Fermeture'} manuelle de : ${component.label}`
                 });
@@ -268,7 +269,7 @@ const ReadingController = {
                     type: 'actuator',
                     ...(controller_id && { controller_id })
                 },
-                attributes: ['id', 'label', 'pin_number'],
+                attributes: ['id', 'label', 'pin_number', 'timer_end'],
                 order: [['pin_number', 'ASC']]
             });
             res.json(actuators);
@@ -285,7 +286,7 @@ const ReadingController = {
                     type: 'sensor',
                     ...(controller_id && { controller_id })
                 },
-                attributes: ['id', 'label', 'pin_number'],
+                attributes: ['id', 'label', 'pin_number', 'unit', 'min_value', 'max_value', 'v_min', 'v_max'],
                 order: [['label', 'ASC']]
             });
             res.json(sensors);
@@ -296,7 +297,7 @@ const ReadingController = {
 
     async createComponent(req, res, next) {
         try {
-            const { type, pin_number, label, unit, min_value, max_value, controller_id } = req.body;
+            const { type, pin_number, label, unit, min_value, max_value, v_min, v_max, controller_id } = req.body;
             if (!['sensor', 'actuator'].includes(type) || !pin_number || !label) {
                 return res.status(400).json({ error: 'Données invalides (type, pin_number, label requis)' });
             }
@@ -329,7 +330,9 @@ const ReadingController = {
                 label,
                 unit,
                 min_value,
-                max_value
+                max_value,
+                v_min: v_min !== undefined ? v_min : 0.0,
+                v_max: v_max !== undefined ? v_max : 10.0
             });
 
             // Si c'est un actionneur, créer des paramètres par défaut
@@ -347,7 +350,7 @@ const ReadingController = {
     async updateComponent(req, res, next) {
         try {
             const { id } = req.params;
-            const { pin_number, label, unit, min_value, max_value } = req.body;
+            const { pin_number, label, unit, min_value, max_value, v_min, v_max } = req.body;
 
             const component = await Component.findByPk(id);
             if (!component) {
@@ -374,7 +377,9 @@ const ReadingController = {
                 label: label || component.label,
                 unit: unit !== undefined ? unit : component.unit,
                 min_value: min_value !== undefined ? min_value : component.min_value,
-                max_value: max_value !== undefined ? max_value : component.max_value
+                max_value: max_value !== undefined ? max_value : component.max_value,
+                v_min: v_min !== undefined ? v_min : component.v_min,
+                v_max: v_max !== undefined ? v_max : component.v_max
             });
 
             res.json({ success: true, message: 'Composant mis à jour avec succès', component });
@@ -387,19 +392,34 @@ const ReadingController = {
     async deleteComponent(req, res, next) {
         try {
             const { id } = req.params;
+            console.log(`[Controller] Tentative de suppression du composant ID: ${id}`);
+            
             const component = await Component.findByPk(id);
             if (!component) {
                 return res.status(404).json({ error: 'Composant introuvable' });
             }
 
-            // Manually reset any sensors using this component as their trigger
-            await Setting.update({ sensor_id: null }, { where: { sensor_id: id } });
+            // Désactivation temporaire des clés étrangères pour SQLite durant la suppression
+            await sequelize.query('PRAGMA foreign_keys = OFF');
 
-            await component.destroy();
-            res.json({ success: true, message: 'Composant supprimé avec succès' });
+            try {
+                // 1. Nettoyage des dépendances
+                await Setting.update({ sensor_id: null }, { where: { sensor_id: id } });
+                await Reading.destroy({ where: { component_id: id } });
+                await Setting.destroy({ where: { component_id: id } });
+
+                // 2. Suppression du composant
+                await component.destroy();
+                
+                console.log(`[Controller] Composant ${id} supprimé avec succès.`);
+                res.json({ success: true, message: 'Composant supprimé avec succès' });
+            } finally {
+                // Réactivation systématique
+                await sequelize.query('PRAGMA foreign_keys = ON');
+            }
         } catch (err) {
-            console.error('[Controller] Error deleting component:', err);
-            next(err);
+            console.error('[Controller] Erreur lors de la suppression:', err);
+            res.status(500).json({ error: 'Erreur lors de la suppression', details: err.message });
         }
     },
 

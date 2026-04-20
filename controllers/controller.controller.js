@@ -161,18 +161,38 @@ const ControllerController = {
             }
 
             // --- TRIGGER SMS OTP (Nouveau ou Existant) ---
+            const storeKey = `${imei}_${req.user.id}`;
+            const existing = joinOtpStore.get(storeKey);
+            
+            let otp;
+            let smsSent = false;
+            let shouldSendSms = true;
 
-            const otp = Math.floor(100000 + Math.random() * 900000).toString();
-            // TTL 5 minutes
-            joinOtpStore.set(`${imei}_${req.user.id}`, { otp, expires: Date.now() + 5 * 60 * 1000 });
+            if (existing && existing.expires > Date.now()) {
+                otp = existing.otp;
+                // Si envoyé il y a moins de 30 secondes, on ne renvoie pas
+                if (existing.lastSentAt && (Date.now() - existing.lastSentAt < 30000)) {
+                    shouldSendSms = false;
+                    smsSent = existing.lastSentSuccess;
+                }
+            } else {
+                otp = Math.floor(100000 + Math.random() * 900000).toString();
+            }
 
-            const sent = smsService.sendSms(req.user.phone, `Code de verification Smart Orchard pour ${controller.name || 'votre boitier'} : ${otp}`);
-
+            if (shouldSendSms) {
+                smsSent = smsService.sendSms(req.user.phone, `Code de verification Smart Orchard pour ${controller.name || 'votre boitier'} : ${otp}`);
+                joinOtpStore.set(storeKey, { 
+                    otp, 
+                    expires: Date.now() + 5 * 60 * 1000,
+                    lastSentAt: Date.now(),
+                    lastSentSuccess: smsSent
+                });
+            }
 
             res.json({ 
                 ...(controller.toJSON ? controller.toJSON() : controller), 
-                sms_sent: sent,
-                debug_otp: sent ? undefined : otp, // Pour test au cas où pas de boîtier
+                sms_sent: smsSent,
+                debug_otp: smsSent ? undefined : otp, // Pour test au cas où pas de boîtier
                 is_new: isNew
             });
         } catch (err) {

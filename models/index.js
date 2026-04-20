@@ -5,6 +5,15 @@ const sequelize = new Sequelize({
     dialect: 'sqlite',
     storage: path.join(__dirname, '../data/dev.db'),
     logging: false,
+    dialectOptions: {
+        foreignKeys: true // Pour que Sequelize active les PRAGMA si possible
+    },
+    // Backup pour s'assurer que c'est activé sur chaque connexion
+    pool: {
+        afterConnect: (conn, cb) => {
+            conn.run('PRAGMA foreign_keys = ON', cb);
+        }
+    }
 });
 
 // Import des modèles

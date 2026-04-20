@@ -1,4 +1,4 @@
-const { ActivityLog, Controller } = require('../models');
+const { ActivityLog, Controller, User } = require('../models');
 const { Op } = require('sequelize');
 
 const ActivityLogController = {
@@ -26,10 +26,16 @@ const ActivityLogController = {
                 order: [['timestamp', 'DESC']],
                 limit: parseInt(limit),
                 offset: parseInt(offset),
-                include: [{
-                    model: Controller,
-                    attributes: ['name']
-                }]
+                include: [
+                    {
+                        model: Controller,
+                        attributes: ['name']
+                    },
+                    {
+                        model: User,
+                        attributes: ['first_name', 'last_name']
+                    }
+                ]
             });
 
             res.json({
@@ -38,6 +44,32 @@ const ActivityLogController = {
                 currentPage: parseInt(page),
                 logs: rows
             });
+        } catch (err) {
+            next(err);
+        }
+    },
+
+    async getLogById(req, res, next) {
+        try {
+            const { id } = req.params;
+            const log = await ActivityLog.findByPk(id, {
+                include: [
+                    {
+                        model: Controller,
+                        attributes: ['name', 'imei']
+                    },
+                    {
+                        model: User,
+                        attributes: ['first_name', 'last_name', 'phone']
+                    }
+                ]
+            });
+
+            if (!log) {
+                return res.status(404).json({ error: 'Log non trouvé' });
+            }
+
+            res.json(log);
         } catch (err) {
             next(err);
         }
