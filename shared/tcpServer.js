@@ -133,11 +133,19 @@ const server = net.createServer((socket) => {
                                 let finalValue = rawValue;
 
                                 // --- CALIBRAGE GENERIQUE (UNIQUEMENT POUR LES PORTS IN OU VOL) ---
-                                // On applique le calcul de tension sur les pins analogiques 'IN X' ou 'VOL X'
-                                // si min/max sont définis.
+                                // f(X) = Pmin + [(Vreçu - Vmin) / (Vmax - Vmin)] * (Pmax - Pmin)
                                 if ((comp.pin_number.startsWith('IN ') || comp.pin_number.startsWith('VOL ')) && comp.min_value !== null && comp.max_value !== null) {
-                                    // f(x) = min + (x / 10000) * (max - min)
-                                    finalValue = comp.min_value + (rawValue / 10000) * (comp.max_value - comp.min_value);
+                                    const vRecu = rawValue / 1000;
+                                    const vMin = comp.v_min ?? 0;
+                                    const vMax = comp.v_max ?? 10;
+                                    const pMin = comp.min_value;
+                                    const pMax = comp.max_value;
+
+                                    if (vMax !== vMin) {
+                                        finalValue = pMin + ((vRecu - vMin) / (vMax - vMin)) * (pMax - pMin);
+                                    } else {
+                                        finalValue = pMin;
+                                    }
                                     finalValue = Math.round(finalValue * 10) / 10;
                                 }
 

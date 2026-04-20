@@ -35,6 +35,16 @@ module.exports = (sequelize) => {
             type: DataTypes.FLOAT,
             allowNull: true,
         },
+        v_min: {
+            type: DataTypes.FLOAT,
+            allowNull: false,
+            defaultValue: 0.0,
+        },
+        v_max: {
+            type: DataTypes.FLOAT,
+            allowNull: false,
+            defaultValue: 10.0,
+        },
         timer_end: {
             type: DataTypes.DATE,
             allowNull: true,
