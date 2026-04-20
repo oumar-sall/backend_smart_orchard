@@ -255,7 +255,11 @@ const ReadingController = {
             const tcpServer = require('../shared/tcpServer');
             const isOnline = tcpServer.clients.has(controller.imei);
 
-            res.json({ online: isOnline, controllerName: controller.name });
+            res.json({ 
+                online: isOnline, 
+                controllerName: controller.name, 
+                reporting_interval: controller.reporting_interval 
+            });
         } catch (err) {
             next(err);
         }

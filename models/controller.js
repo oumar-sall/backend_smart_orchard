@@ -16,7 +16,10 @@ module.exports = (sequelize) => {
             type: DataTypes.STRING,
             allowNull: false,
         },
-
+        reporting_interval: {
+            type: DataTypes.INTEGER,
+            defaultValue: 30,
+        },
     }, {
         tableName: 'controllers',
         timestamps: false,

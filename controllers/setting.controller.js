@@ -13,9 +13,16 @@ const SettingController = {
             const settings = await Setting.findOne({
                 include: [{
                     model: Component,
-                    where: componentWhere
+                    where: componentWhere,
+                    include: [Controller]
                 }]
             });
+
+            if (settings && settings.Component && settings.Component.Controller) {
+                // On injecte l'intervalle global du contrôleur dans le retour JSON
+                settings.dataValues.reporting_interval = settings.Component.Controller.reporting_interval;
+            }
+
             res.json(settings);
         } catch (err) {
             next(err);
@@ -39,10 +46,10 @@ const SettingController = {
             });
 
             if (settings) {
-                const oldInterval = settings.reporting_interval;
+                const oldInterval = settings.Component?.Controller?.reporting_interval;
+                
                 await settings.update({
                     irrigation_duration: irrigation_duration !== undefined ? irrigation_duration : settings.irrigation_duration,
-                    reporting_interval: reporting_interval !== undefined ? reporting_interval : settings.reporting_interval,
                     threshold_min: threshold_min !== undefined ? threshold_min : settings.threshold_min,
                     sensor_id: sensor_id !== undefined ? sensor_id : settings.sensor_id,
                     auto_mode: auto_mode !== undefined ? auto_mode : settings.auto_mode,
@@ -56,11 +63,14 @@ const SettingController = {
                     description: `Réglages mis à jour pour : ${settings.Component.label}`
                 });
 
-                // Si l'intervalle a changé, on envoie la commande au boîtier
-                if (reporting_interval && reporting_interval !== oldInterval) {
+                // Si l'intervalle a changé (Global), on met à jour le Controller
+                if (reporting_interval !== undefined && reporting_interval !== oldInterval) {
                     const controller = settings.Component?.Controller;
-                    if (controller && controller.imei) {
-                        sendCommand(controller.imei, `HEAD ${reporting_interval}`);
+                    if (controller) {
+                        await controller.update({ reporting_interval });
+                        if (controller.imei) {
+                            sendCommand(controller.imei, `HEAD ${reporting_interval}`);
+                        }
                     }
                 }
 
