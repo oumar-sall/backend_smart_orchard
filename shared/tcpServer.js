@@ -80,9 +80,12 @@ const server = net.createServer((socket) => {
                     if (socket.imei) ackEmitter.emit(`ack_${socket.imei}`);
                 }
                 for (const data of records) {
-                    if (data.imei) {
+                    if (data.imei && !socket.imei) {
                         socket.imei = data.imei;
                         clients.set(socket.imei, socket);
+                        // REPRISE AUTO : Au branchement, on vérifie si des vannes doivent être rouvertes
+                        // On ne le fait qu'UNE FOIS à l'identification pour éviter de spammer sur chaque record
+                        restoreTimersOnReconnection(socket.imei);
                     }
                     if (!socket.imei) continue;
 
@@ -152,7 +155,10 @@ const server = net.createServer((socket) => {
                                 await Reading.create({ component_id: comp.id, value: finalValue, created_at: recordDate });
 
                                 // Logique spécifique Humidité (Arrosage Auto)
-                                if (comp.pin_number === PINS.HUM || comp.label?.toLowerCase().includes('humidité')) {
+                                // OPTIMISATION : On ne déclenche l'arrosage auto QUE sur le dernier record du paquet
+                                // pour éviter de spammer des commandes si le boîtier envoie de l'historique.
+                                const isLatestRecord = records.indexOf(data) === records.length - 1;
+                                if (isLatestRecord && (comp.pin_number === PINS.HUM || comp.label?.toLowerCase().includes('humidité'))) {
                                     await runAutoIrrigationCheck(finalValue, comp.id, socket.imei, controller);
                                 }
                             }
@@ -171,17 +177,121 @@ const server = net.createServer((socket) => {
 
     socket.on('close', () => {
         if (socket.imei && clients.has(socket.imei)) {
-            clients.delete(socket.imei);
+            const imei = socket.imei;
+            clients.delete(imei);
+            runConnectionFailsafe(imei);
         }
     });
 
     socket.on('error', (err) => {
         if (socket.imei && clients.get(socket.imei) === socket) {
-            clients.delete(socket.imei);
+            const imei = socket.imei;
+            clients.delete(imei);
+            runConnectionFailsafe(imei);
         }
         logger.error(`❌ Erreur socket (IMEI: ${socket.imei || 'Inconnu'}): ${err.message}`);
     });
 });
+
+/**
+ * Sécurité : Réinitialise l'état des vannes en base de données lors d'une déconnexion
+ * pour éviter les "vannes fantômes" actives sur le dashboard.
+ */
+async function runConnectionFailsafe(imei) {
+    try {
+        const controller = await Controller.findOne({ where: { imei } });
+        if (!controller) return;
+
+        // On cherche tous les actionneurs liés à ce contrôleur qui ont un timer actif
+        const actuators = await Component.findAll({
+            where: { 
+                controller_id: controller.id,
+                type: 'actuator'
+            }
+        });
+
+        let activeCount = 0;
+        for (const comp of actuators) {
+            if (comp.timer_end && new Date(comp.timer_end) > new Date()) {
+                activeCount++;
+            }
+        }
+
+        if (activeCount > 0) {
+            await ActivityLog.create({
+                controller_id: controller.id,
+                event_type: 'SECURITY_INFO',
+                description: `INFO : Déconnexion détectée. ${activeCount} vanne(s) resteront en attente de reconnexion pour reprise.`
+            });
+            logger.warn(`[Resilience] IMEI ${imei}: Déconnexion détectée, ${activeCount} minuteurs préservés pour reprise.`);
+        }
+    } catch (err) {
+        logger.error(`[Resilience] Erreur lors du log fail-safe IMEI ${imei}: ${err.message}`);
+    }
+}
+
+/**
+ * REPRISE AUTOMATIQUE : Dès qu'un boîtier se reconnecte, on vérifie s'il doit
+ * rouvrir des vannes dont le timer n'est pas encore expiré.
+ */
+async function restoreTimersOnReconnection(imei) {
+    try {
+        const controller = await Controller.findOne({ 
+            where: { imei },
+            include: [{
+                model: Component,
+                where: { type: 'actuator' }
+            }]
+        });
+
+        if (!controller || !controller.Components) return;
+
+        const now = new Date();
+        let restoredCount = 0;
+
+        for (const comp of controller.Components) {
+            // Si le timer est toujours dans le futur
+            if (comp.timer_end && new Date(comp.timer_end) > now) {
+                const remainingSeconds = Math.round((new Date(comp.timer_end).getTime() - now.getTime()) / 1000);
+                
+                logger.info(`[RECOVERY] ♻️ Reprise arrosage pour ${comp.label} (Reste: ${remainingSeconds}s)`);
+                
+                // 1. Ordre de réouverture physique
+                sendCommand(imei, `${comp.pin_number},0`); // 0 = OUVRIR
+
+                // 2. Programmation de la fermeture auto à l'heure initialement prévue
+                setTimeout(async () => {
+                    try {
+                        const freshComp = await Component.findByPk(comp.id);
+                        if (freshComp && freshComp.timer_end && Math.abs(freshComp.timer_end.getTime() - new Date(comp.timer_end).getTime()) < 1000) {
+                            sendCommand(imei, `${comp.pin_number},1`); // 1 = FERMER
+                            await freshComp.update({ timer_end: null });
+                            await ActivityLog.create({
+                                controller_id: controller.id,
+                                event_type: 'IRRIGATION_AUTO',
+                                description: `Fermeture auto (après reprise) : ${comp.label}`
+                            });
+                        }
+                    } catch (e) {
+                        logger.error(`[RECOVERY] Erreur fermeture après reprise: ${e.message}`);
+                    }
+                }, remainingSeconds * 1000);
+
+                restoredCount++;
+            }
+        }
+
+        if (restoredCount > 0) {
+            await ActivityLog.create({
+                controller_id: controller.id,
+                event_type: 'SECURITY_INFO',
+                description: `REPRISE : Connexion rétablie. ${restoredCount} vanne(s) rouvertes pour terminer l'arrosage.`
+            });
+        }
+    } catch (err) {
+        logger.error(`[RECOVERY] Erreur restauration timers pour IMEI ${imei}: ${err.message}`);
+    }
+}
 
 function decodeGalileo(buffer) {
     const records = [];
