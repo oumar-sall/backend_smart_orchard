@@ -519,7 +519,11 @@ async function processQueue(imei) {
     qc.isProcessing = false;
 }
 
-server.listen(TCP_PORT, '0.0.0.0', () => logger.info(`🚀 Serveur actif sur le port ${TCP_PORT}`));
+function start() {
+    server.listen(TCP_PORT, '0.0.0.0', () => logger.info(`TCP server listening on port ${TCP_PORT}`));
+    // Restore timers after a small delay to ensure DB is ready
+    setTimeout(restoreTimersOnStartup, 2000);
+}
 
 // Fonction pour calculer le CRC16 Galileo
 function calculateCRC16(buffer) {
@@ -639,12 +643,12 @@ async function runAutoIrrigationCheck(humValue, humComponentId, imei, controller
 }
 
 module.exports = {
-    server,
     sendCommand,
     clients,
     runAutoIrrigationCheck,
     restoreTimersOnStartup,
     decodeGalileo,
+    start
 };
 
 
@@ -697,6 +701,3 @@ async function restoreTimersOnStartup() {
         logger.error(`[RECOVERY] Erreur récupération des timers: ${err.message}`);
     }
 }
-
-// Laisse 2 secondes pour s'assurer que sequelize a sync
-setTimeout(restoreTimersOnStartup, 2000);
