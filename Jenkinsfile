@@ -23,7 +23,7 @@ pipeline {
         stage('Tests') {
             steps {
                 echo 'Running tests...'
-                bat 'npm test'
+                bat 'npx jest --forceExit'
             }
         }
 
@@ -37,8 +37,7 @@ pipeline {
             }
             steps {
                 echo 'Deploying to production server with PM2...'
-                // Utilisation de bat pour Windows et appel explicite du fichier de config
-                bat 'pm2 startOrReload ecosystem.config.js'
+                bat 'npx pm2 startOrReload ecosystem.config.js'
             }
         }
     }
