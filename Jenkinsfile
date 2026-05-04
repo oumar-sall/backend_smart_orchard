@@ -49,8 +49,10 @@ pipeline {
                 echo 'Waiting for startup...'
                 bat 'ping 127.0.0.1 -n 6 > nul'
                 
-                echo 'Checking logs...'
-                bat 'npx pm2 logs smart-orchard-api --lines 20 --raw --no-color'
+                echo 'Checking logs (Output)...'
+                bat 'type C:\\pm2\\logs\\pm2-out.log || echo No output logs yet'
+                echo 'Checking logs (Errors)...'
+                bat 'type C:\\pm2\\logs\\pm2-error.log || echo No error logs yet'
             }
         }
     }
