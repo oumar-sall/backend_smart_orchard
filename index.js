@@ -3,14 +3,19 @@ const app = require('./app');
 const { sequelize } = require('./models');
 const logger = require('./shared/logger');
 
+logger.info('Starting database synchronization (110k+ records may take a moment)...');
 sequelize.sync().then(async () => {
-    logger.info('Database synchronized.');
+    logger.info('✅ Database synchronized and ready.');
 
     try {
+        const MaintenanceService = require('./shared/maintenance.service');
         const tcpServer = require('./shared/tcpServer');
+        
+        // Start TCP server and maintenance in parallel
         tcpServer.start();
-    } catch (tcpErr) {
-        logger.error('TCP server startup error:', tcpErr);
+        MaintenanceService.purgeOldData();
+    } catch (err) {
+        logger.error('Startup services error:', err);
     }
 
     app.listen(3000, '0.0.0.0', () => {
