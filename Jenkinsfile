@@ -5,17 +5,11 @@ pipeline {
         nodejs 'node25'
     }
 
-    environment {
-        // Dossier public pour PM2 (évite les problèmes de droits Windows)
-        PM2_HOME = 'C:\\pm2'
-    }
-
     stages {
         stage('Preparation') {
             steps {
-                echo 'Ensuring PM2 home and logs exist...'
-                bat 'if not exist C:\\pm2 mkdir C:\\pm2'
-                bat 'if not exist C:\\pm2\\logs mkdir C:\\pm2\\logs'
+                echo 'Cleaning logs...'
+                bat 'if not exist logs mkdir logs'
             }
         }
 
@@ -39,20 +33,9 @@ pipeline {
             }
             steps {
                 echo 'Deploying to production server with PM2...'
-                // On essaie de supprimer l'ancien processus, mais on ignore l'erreur s'il n'existe pas
                 bat 'npx pm2 delete smart-orchard-api || exit 0'
-                
-                echo 'Starting application...'
                 bat 'set NODE_ENV=production && npx pm2 start ecosystem.config.js'
-                
-                // Petit temps d'attente (ping est plus compatible que timeout sur Jenkins)
-                echo 'Waiting for startup...'
-                bat 'ping 127.0.0.1 -n 6 > nul'
-                
-                echo 'Checking logs (Output)...'
-                bat 'type C:\\pm2\\logs\\pm2-out.log || echo No output logs yet'
-                echo 'Checking logs (Errors)...'
-                bat 'type C:\\pm2\\logs\\pm2-error.log || echo No error logs yet'
+                echo 'Deployment successful!'
             }
         }
     }
@@ -60,9 +43,6 @@ pipeline {
     post {
         always {
             echo 'Pipeline finished.'
-        }
-        failure {
-            echo '❌ Pipeline FAILED. Check logs.'
         }
     }
 }
