@@ -40,7 +40,7 @@ const IrrigationService = {
                 await ActivityLog.create({
                     controller_id: controller.id,
                     event_type: 'IRRIGATION_AUTO',
-                    description: `Auto-start: ${comp.label} (Hum: ${humValue}% < Seuil: ${threshold}%)`
+                    description: `Démarrage auto : ${comp.label} (Hum : ${humValue}% < Seuil : ${threshold}%)`
                 });
 
                 setTimeout(async () => {
@@ -52,7 +52,7 @@ const IrrigationService = {
                             await ActivityLog.create({
                                 controller_id: controller.id,
                                 event_type: 'IRRIGATION_AUTO',
-                                description: `Auto-close: ${comp.label}`
+                                description: `Fermeture auto : ${comp.label}`
                             });
                             logger.info(`[AUTO] 🔒 Auto-close for ${comp.label}`);
                         }
@@ -83,7 +83,7 @@ const IrrigationService = {
                 if (comp.timer_end && new Date(comp.timer_end) > now) {
                     const remainingSeconds = Math.round((new Date(comp.timer_end).getTime() - now.getTime()) / 1000);
                     
-                    logger.info(`[RECOVERY] ♻️ Resuming irrigation for ${comp.label} (${remainingSeconds}s left)`);
+                    logger.info(`[RESTAURATION] ♻️ Reprise de l'irrigation pour ${comp.label} (${remainingSeconds}s restantes)`);
                     
                     sendCommandFn(imei, `${comp.pin_number},0`);
 
@@ -96,11 +96,11 @@ const IrrigationService = {
                                 await ActivityLog.create({
                                     controller_id: controller.id,
                                     event_type: 'IRRIGATION_AUTO',
-                                    description: `Auto-close (after recovery): ${comp.label}`
+                                    description: `Fermeture auto (après restauration) : ${comp.label}`
                                 });
                             }
                         } catch (e) {
-                            logger.error(`[RECOVERY] Error during close after recovery: ${e.message}`);
+                            logger.error(`[RESTAURATION] Erreur lors de la fermeture après reprise : ${e.message}`);
                         }
                     }, remainingSeconds * 1000);
 
@@ -112,11 +112,11 @@ const IrrigationService = {
                 await ActivityLog.create({
                     controller_id: controller.id,
                     event_type: 'SECURITY_INFO',
-                    description: `RECOVERY: Connection restored. ${restoredCount} valve(s) reopened to finish irrigation.`
+                    description: `RESTAURATION : Connexion rétablie. ${restoredCount} vanne(s) réouverte(s) pour terminer l'irrigation.`
                 });
             }
         } catch (err) {
-            logger.error(`[RECOVERY] Error restoring timers for IMEI ${imei}: ${err.message}`);
+            logger.error(`[RESTAURATION] Erreur lors de la restauration des minuteurs pour IMEI ${imei} : ${err.message}`);
         }
     },
 
@@ -144,10 +144,10 @@ const IrrigationService = {
                                 if (fresh && fresh.timer_end && Math.abs(fresh.timer_end.getTime() - timerVal) < 1000) {
                                     sendCommandFn(comp.Controller.imei, `${comp.pin_number},1`);
                                     await fresh.update({ timer_end: null });
-                                    logger.info(`[AUTO] 🔒 Auto-close (startup recovery) for ${comp.label}`);
+                                    logger.info(`[AUTO] 🔒 Fermeture auto (restauration au démarrage) pour ${comp.label}`);
                                 }
                             } catch (e) {
-                                logger.error(`[TCP] Timer recovery error: ${e.message}`);
+                                logger.error(`[TCP] Erreur restauration minuteur : ${e.message}`);
                             }
                         }, remainingMs);
                         restoredCount++;
@@ -161,10 +161,10 @@ const IrrigationService = {
                 }
             }
             if (restoredCount > 0) {
-                logger.info(`[RECOVERY] ⏳ ${restoredCount} irrigation timers recovered from memory!`);
+                logger.info(`[RESTAURATION] ⏳ ${restoredCount} minuteurs d'irrigation récupérés en mémoire !`);
             }
         } catch (err) {
-            logger.error(`[RECOVERY] Error during global startup recovery: ${err.message}`);
+            logger.error(`[RESTAURATION] Erreur lors de la reprise globale au démarrage : ${err.message}`);
         }
     }
 };
