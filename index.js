@@ -14,6 +14,11 @@ sequelize.sync().then(async () => {
         // Start TCP server and maintenance in parallel
         tcpServer.start();
         MaintenanceService.purgeOldData();
+
+        // Schedule maintenance to run every 24 hours
+        setInterval(() => {
+            MaintenanceService.purgeOldData();
+        }, 24 * 60 * 60 * 1000);
     } catch (err) {
         logger.error('Startup services error:', err);
     }

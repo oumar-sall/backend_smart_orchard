@@ -33,8 +33,10 @@ const MaintenanceService = {
             if (deletedReadings > 0 || deletedLogs > 0) {
                 logger.info(`[Maintenance] ✨ Purge complete: ${deletedReadings} readings and ${deletedLogs} logs removed.`);
                 
-                // Optionnel: VACUUM pour récupérer l'espace disque sur SQLite
-                // await sequelize.query('VACUUM'); 
+                // VACUUM pour récupérer l'espace disque et optimiser SQLite
+                const { sequelize } = require('../models');
+                await sequelize.query('VACUUM'); 
+                logger.info('[Maintenance] 🚀 Database optimized (VACUUM complete).');
             } else {
                 logger.info('[Maintenance] ✅ No old data to purge.');
             }

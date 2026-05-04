@@ -2,7 +2,7 @@ const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
 
-const logDir = path.join(__dirname, '../data/logs');
+const logDir = process.env.LOGS_DIR || 'C:\\pm2\\SmartOrchard\\logs';
 if (!fs.existsSync(logDir)) {
     fs.mkdirSync(logDir, { recursive: true });
 }

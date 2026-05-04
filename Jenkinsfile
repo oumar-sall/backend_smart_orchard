@@ -8,10 +8,9 @@ pipeline {
     stages {
         stage('Preparation') {
             steps {
-                echo 'Cleaning logs...'
-                bat 'if not exist logs mkdir logs'
-                echo 'Ensuring persistent data directory exists...'
-                bat 'if not exist C:\\pm2\\data mkdir C:\\pm2\\data'
+                echo 'Ensuring consistent production directory structure...'
+                bat 'if not exist C:\\pm2\\SmartOrchard\\data mkdir C:\\pm2\\SmartOrchard\\data'
+                bat 'if not exist C:\\pm2\\SmartOrchard\\logs mkdir C:\\pm2\\SmartOrchard\\logs'
             }
         }
 
@@ -37,7 +36,7 @@ pipeline {
                 echo 'Deploying to production server with PM2...'
                 bat 'npx pm2 delete smart-orchard-api || exit 0'
                 bat 'set NODE_ENV=production && npx pm2 start ecosystem.config.js'
-                echo 'Deployment successful!'
+                echo 'Deployment successful! Data and Logs are in C:\\pm2\\SmartOrchard'
             }
         }
     }
