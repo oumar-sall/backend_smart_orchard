@@ -38,13 +38,18 @@ pipeline {
             }
             steps {
                 echo 'Deploying to production server with PM2...'
-                // On nettoie l'ancien processus s'il existe et on relance proprement
-                bat 'set NODE_ENV=production && npx pm2 delete smart-orchard-api || echo Process not running'
+                // On essaie de supprimer l'ancien processus, mais on ignore l'erreur s'il n'existe pas
+                bat 'npx pm2 delete smart-orchard-api || exit 0'
+                
+                echo 'Starting application...'
                 bat 'set NODE_ENV=production && npx pm2 start ecosystem.config.js'
                 
-                // On affiche les logs immédiatement pour debug
-                echo 'Checking startup logs...'
-                bat 'npx pm2 logs smart-orchard-api --lines 20 --raw --no-colors --err'
+                // Petit temps d'attente pour laisser le serveur s'initialiser
+                echo 'Waiting for startup...'
+                bat 'timeout /t 5 /nobreak'
+                
+                echo 'Checking logs...'
+                bat 'npx pm2 logs smart-orchard-api --lines 20 --raw --no-colors'
             }
         }
     }
