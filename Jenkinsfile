@@ -27,12 +27,9 @@ pipeline {
         }
 
         stage('Deployment') {
-            // On déploie si on est sur la branche de test OU sur main
+            // On déploie si on est sur une branche connue
             when {
-                anyOf {
-                    branch 'main'
-                    branch 'feature/deployability'
-                }
+                expression { return env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'feature/deployability' || env.GIT_BRANCH?.contains('feature/deployability') }
             }
             steps {
                 echo 'Deploying to production server with PM2...'
