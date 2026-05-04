@@ -13,8 +13,9 @@ pipeline {
     stages {
         stage('Preparation') {
             steps {
-                echo 'Ensuring PM2 home exists...'
+                echo 'Ensuring PM2 home and logs exist...'
                 bat 'if not exist C:\\pm2 mkdir C:\\pm2'
+                bat 'if not exist C:\\pm2\\logs mkdir C:\\pm2\\logs'
             }
         }
 
@@ -44,9 +45,9 @@ pipeline {
                 echo 'Starting application...'
                 bat 'set NODE_ENV=production && npx pm2 start ecosystem.config.js'
                 
-                // Petit temps d'attente pour laisser le serveur s'initialiser
+                // Petit temps d'attente (ping est plus compatible que timeout sur Jenkins)
                 echo 'Waiting for startup...'
-                bat 'timeout /t 5 /nobreak'
+                bat 'ping 127.0.0.1 -n 6 > nul'
                 
                 echo 'Checking logs...'
                 bat 'npx pm2 logs smart-orchard-api --lines 20 --raw --no-colors'
