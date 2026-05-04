@@ -451,8 +451,9 @@ const ReadingController = {
             }
 
 
+            const IrrigationService = require('../shared/irrigation.service');
             const tcpServer = require('../shared/tcpServer');
-            await tcpServer.runAutoIrrigationCheck(humidity, humComp.id, controller.imei, controller);
+            await IrrigationService.runAutoIrrigationCheck(humidity, humComp.id, controller.imei, controller, tcpServer.sendCommand);
 
             res.json({
                 ok: true,

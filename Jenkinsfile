@@ -3,38 +3,37 @@ pipeline {
 
     environment {
         NODE_ENV = 'production'
+        // On force PM2 à trouver un dossier de configuration valide sur Windows
+        PM2_HOME = 'C:\\Users\\pc\\.pm2'
     }
 
     stages {
         stage('Installation') {
             steps {
                 echo 'Installing dependencies...'
-                sh 'npm install'
+                bat 'npm install'
             }
         }
 
         stage('Tests') {
             steps {
                 echo 'Running tests...'
-                sh 'npm test'
-            }
-        }
-
-        stage('SonarQube Analysis') {
-            steps {
-                echo 'Analyzing code quality...'
-                // SonarQube call would go here
+                bat 'npm test'
             }
         }
 
         stage('Deployment') {
+            // On déploie si on est sur la branche de test OU sur main
             when {
-                branch 'main'
+                anyOf {
+                    branch 'main'
+                    branch 'feature/deployability'
+                }
             }
             steps {
-                echo 'Deploying to production server...'
-                // Zero-downtime reload with PM2
-                sh 'pm2 startOrReload ecosystem.config.js'
+                echo 'Deploying to production server with PM2...'
+                // Utilisation de bat pour Windows et appel explicite du fichier de config
+                bat 'pm2 startOrReload ecosystem.config.js'
             }
         }
     }
