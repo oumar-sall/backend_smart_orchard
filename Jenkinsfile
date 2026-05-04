@@ -10,6 +10,8 @@ pipeline {
             steps {
                 echo 'Cleaning logs...'
                 bat 'if not exist logs mkdir logs'
+                echo 'Ensuring persistent data directory exists...'
+                bat 'if not exist C:\\pm2\\data mkdir C:\\pm2\\data'
             }
         }
 
