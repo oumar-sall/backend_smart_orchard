@@ -1,12 +1,12 @@
 const { Controller, User, Access } = require('../models');
 const logger = require('../shared/logger');
 
-const joinOtpStore = new Map(); // Store OTPs for joining: IMEI_UserID -> { otp, expires }
+// In-memory OTP store for join flow: `${imei}_${userId}` -> { otp, expires, lastSentAt, lastSentSuccess }
+const joinOtpStore = new Map();
 
 const ControllerController = {
     async getAll(req, res, next) {
         try {
-            // Uniquement les contrôleurs auxquels l'utilisateur a accès
             const user = await User.findByPk(req.user.id, {
                 include: [{
                     model: Controller,
@@ -39,7 +39,6 @@ const ControllerController = {
                 return res.status(400).json({ error: 'Nom et IMEI requis' });
             }
 
-            // 1. Toujours vérifier le PIN dynamique (OTP SMS)
             const stored = joinOtpStore.get(`${imei}_${req.user.id}`);
             if (!stored || stored.otp !== join_otp) {
                 return res.status(403).json({ error: 'Code SMS invalide ou expiré' });
@@ -49,17 +48,9 @@ const ControllerController = {
                 return res.status(403).json({ error: 'Code SMS expiré' });
             }
 
-            // Vérifier si le contrôleur existe déjà
             let controller = await Controller.findOne({ where: { imei } });
 
             if (controller) {
-                // --- LOGIQUE DE REJOINDRE (EXISTANT) ---
-                
-
-
-
-
-                // Vérifier si l'accès existe déjà
                 const existingAccess = await Access.findOne({
                     where: { user_id: req.user.id, controller_id: controller.id }
                 });
@@ -68,25 +59,19 @@ const ControllerController = {
                     return res.status(400).json({ error: 'Vous avez déjà accès à ce contrôleur' });
                 }
 
-                // Nettoyage de l'OTP
-            joinOtpStore.delete(`${imei}_${req.user.id}`);
+                joinOtpStore.delete(`${imei}_${req.user.id}`);
 
             } else {
-                // --- LOGIQUE DE CRÉATION (NOUVEAU) ---
-                controller = await Controller.create({ 
-                    name, 
-                    imei
-                });
-                logger.info(`[DB] Nouveau contrôleur créé : ${name} (${imei}) par ${req.user.phone}`);
+                controller = await Controller.create({ name, imei });
+                logger.info(`[DB] New controller created: ${name} (${imei}) by ${req.user.phone}`);
             }
 
-            // Créer le lien d'accès (propriétaire ou membre)
             await Access.create({
                 user_id: req.user.id,
                 controller_id: controller.id
             });
 
-            logger.info(`[AUTH] Accès accordé à l'utilisateur ${req.user.phone} pour le contrôleur ${imei}`);
+            logger.info(`[AUTH] Access granted to ${req.user.phone} for controller ${imei}`);
 
             res.status(201).json(controller);
         } catch (err) {
@@ -119,7 +104,6 @@ const ControllerController = {
             if (!controller) {
                 return res.status(404).json({ error: 'Contrôleur non trouvé' });
             }
-            // Ici, on pourrait aussi restreindre la suppression au proprio
             await controller.destroy();
             res.json({ success: true, message: 'Contrôleur supprimé avec succès' });
         } catch (err) {
@@ -146,10 +130,8 @@ const ControllerController = {
             
             let isNew = false;
             if (!controller) {
-                // 2. Si pas en base, vérifier s'il est connecté au serveur TCP
                 if (clients.has(imei)) {
                     isNew = true;
-                    // On crée un objet "virtuel" pour le frontend
                     controller = {
                         name: 'Nouveau boîtier détecté',
                         imei: imei,
@@ -160,17 +142,15 @@ const ControllerController = {
                 }
             }
 
-            // --- TRIGGER SMS OTP (Nouveau ou Existant) ---
             const storeKey = `${imei}_${req.user.id}`;
             const existing = joinOtpStore.get(storeKey);
-            
+
             let otp;
             let smsSent = false;
             let shouldSendSms = true;
 
             if (existing && existing.expires > Date.now()) {
                 otp = existing.otp;
-                // Si envoyé il y a moins de 30 secondes, on ne renvoie pas
                 if (existing.lastSentAt && (Date.now() - existing.lastSentAt < 30000)) {
                     shouldSendSms = false;
                     smsSent = existing.lastSentSuccess;
@@ -181,18 +161,18 @@ const ControllerController = {
 
             if (shouldSendSms) {
                 smsSent = smsService.sendSms(req.user.phone, `Code de verification Smart Orchard pour ${controller.name || 'votre boitier'} : ${otp}`);
-                joinOtpStore.set(storeKey, { 
-                    otp, 
+                joinOtpStore.set(storeKey, {
+                    otp,
                     expires: Date.now() + 5 * 60 * 1000,
                     lastSentAt: Date.now(),
                     lastSentSuccess: smsSent
                 });
             }
 
-            res.json({ 
-                ...(controller.toJSON ? controller.toJSON() : controller), 
+            res.json({
+                ...(controller.toJSON ? controller.toJSON() : controller),
                 sms_sent: smsSent,
-                debug_otp: smsSent ? undefined : otp, // Pour test au cas où pas de boîtier
+                debug_otp: smsSent ? undefined : otp,
                 is_new: isNew
             });
         } catch (err) {

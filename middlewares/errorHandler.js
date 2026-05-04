@@ -1,11 +1,7 @@
 const { AppError } = require('./errors');
+const logger = require('../shared/logger');
 
-/**
- * Middleware de gestion centralisée des erreurs.
- * À monter en dernier dans index.js : app.use(errorHandler)
- */
 function errorHandler(err, req, res, next) {
-    // Erreur métier typée (NotFoundError, etc.)
     if (err instanceof AppError) {
         return res.status(err.statusCode).json({
             error: err.name,
@@ -13,7 +9,6 @@ function errorHandler(err, req, res, next) {
         });
     }
 
-    // Erreur Sequelize de validation
     if (err.name === 'SequelizeValidationError' || err.name === 'SequelizeUniqueConstraintError') {
         return res.status(400).json({
             error: 'ValidationError',
@@ -21,8 +16,7 @@ function errorHandler(err, req, res, next) {
         });
     }
 
-    // Erreur imprévue
-    console.error('[Unhandled Error]', err);
+    logger.error('[Unhandled Error]', { message: err.message, stack: err.stack });
     res.status(500).json({
         error: 'InternalServerError',
         message: 'Une erreur interne est survenue',

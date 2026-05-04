@@ -8,3 +8,7 @@ node_modules/
 data/
 *.db
 *.db-journal
+logs/
+*.log
+C:/pm2/
+C:/Users/pc/.pm2/

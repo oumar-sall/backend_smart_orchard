@@ -3,7 +3,7 @@ const path = require('path');
 
 const sequelize = new Sequelize({
     dialect: 'sqlite',
-    storage: path.join(__dirname, '../data/dev.db'),
+    storage: process.env.NODE_ENV === 'test' ? ':memory:' : (process.env.DATABASE_STORAGE || 'C:\\pm2\\SmartOrchard\\data\\dev.db'),
     logging: false,
     dialectOptions: {
         foreignKeys: true // Pour que Sequelize active les PRAGMA si possible
