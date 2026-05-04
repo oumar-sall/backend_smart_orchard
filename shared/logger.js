@@ -22,6 +22,12 @@ const logger = winston.createLogger({
     level: 'info',
     format: logFormat,
     transports: [
+        new winston.transports.Console({
+            format: winston.format.combine(
+                winston.format.colorize(),
+                logFormat
+            )
+        }),
         new winston.transports.File({
             filename: path.join(logDir, 'error.log'),
             level: 'error',
