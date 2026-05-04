@@ -1,6 +1,7 @@
 const { Reading, Component, ActivityLog, Controller, Setting, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const { PINS } = require('../shared/enums');
+const logger = require('../shared/logger');
 
 const ReadingController = {
     async getLatestDashboard(req, res, next) {
@@ -174,7 +175,7 @@ const ReadingController = {
             // On récupère le composant pour connaître son pin_number
             const component = await Component.findByPk(componentId, { include: [Setting] });
             if (!component) {
-                console.error(`[Controller] Composant ID ${componentId} non trouvé`);
+                logger.error(`[Reading] Component ID ${componentId} not found`);
                 return res.status(404).json({ error: "Composant non trouvé" });
             }
 
@@ -182,10 +183,9 @@ const ReadingController = {
             const actionValue = action === 'open' ? '0' : '1';
             const command = `${component.pin_number},${actionValue}`;
 
-            // On récupère le contrôleur principal (pour l'IMEI)
             const controller = await Controller.findOne({ where: { id: component.controller_id } });
             if (!controller) {
-                console.error("[Controller] Aucun contrôleur trouvé pour ce composant");
+                logger.error('[Reading] No controller found for this component');
                 return res.status(404).json({ error: "Contrôleur non trouvé" });
             }
 
@@ -215,7 +215,7 @@ const ReadingController = {
                                 });
                             }
                         } catch (e) {
-                            console.error("[Timer] Erreur fermeture auto:", e);
+                            logger.error('[Reading] Auto-close timer error:', e);
                         }
                     }, irrigation_duration * 1000);
                 } else {
@@ -235,11 +235,11 @@ const ReadingController = {
                     timerEnd: timerEnd
                 });
             } else {
-                console.error("[Controller]sendCommand a échoué (boîtier déconnecté?)");
+                logger.error('[Reading] sendCommand failed — device may be offline');
                 return res.status(503).json({ error: "Boîtier hors ligne" });
             }
         } catch (err) {
-            console.error("[Controller] ERREUR FATALE dans toggleIrrigation:", err);
+            logger.error('[Reading] Fatal error in toggleIrrigation:', err);
             return res.status(500).json({ error: "Internal Server Error", details: err.message });
         }
     },
@@ -339,14 +339,13 @@ const ReadingController = {
                 v_max: v_max !== undefined ? v_max : 10.0
             });
 
-            // Si c'est un actionneur, créer des paramètres par défaut
             if (type === 'actuator') {
                 await Setting.create({ component_id: newComponent.id });
             }
 
             res.json(newComponent);
         } catch (err) {
-            console.error('[Controller] Error creating component:', err);
+            logger.error('[Reading] Error creating component:', err);
             next(err);
         }
     },
@@ -388,7 +387,7 @@ const ReadingController = {
 
             res.json({ success: true, message: 'Composant mis à jour avec succès', component });
         } catch (err) {
-            console.error('[Controller] Error updating component:', err);
+            logger.error('[Reading] Error updating component:', err);
             next(err);
         }
     },
@@ -396,33 +395,27 @@ const ReadingController = {
     async deleteComponent(req, res, next) {
         try {
             const { id } = req.params;
-            console.log(`[Controller] Tentative de suppression du composant ID: ${id}`);
-            
+
             const component = await Component.findByPk(id);
             if (!component) {
                 return res.status(404).json({ error: 'Composant introuvable' });
             }
 
-            // Désactivation temporaire des clés étrangères pour SQLite durant la suppression
+            // Disable FK constraints for SQLite during deletion
             await sequelize.query('PRAGMA foreign_keys = OFF');
 
             try {
-                // 1. Nettoyage des dépendances
                 await Setting.update({ sensor_id: null }, { where: { sensor_id: id } });
                 await Reading.destroy({ where: { component_id: id } });
                 await Setting.destroy({ where: { component_id: id } });
-
-                // 2. Suppression du composant
                 await component.destroy();
-                
-                console.log(`[Controller] Composant ${id} supprimé avec succès.`);
+
                 res.json({ success: true, message: 'Composant supprimé avec succès' });
             } finally {
-                // Réactivation systématique
                 await sequelize.query('PRAGMA foreign_keys = ON');
             }
         } catch (err) {
-            console.error('[Controller] Erreur lors de la suppression:', err);
+            logger.error('[Reading] Error deleting component:', err);
             res.status(500).json({ error: 'Erreur lors de la suppression', details: err.message });
         }
     },
@@ -458,8 +451,9 @@ const ReadingController = {
             }
 
 
+            const IrrigationService = require('../shared/irrigation.service');
             const tcpServer = require('../shared/tcpServer');
-            await tcpServer.runAutoIrrigationCheck(humidity, humComp.id, controller.imei, controller);
+            await IrrigationService.runAutoIrrigationCheck(humidity, humComp.id, controller.imei, controller, tcpServer.sendCommand);
 
             res.json({
                 ok: true,

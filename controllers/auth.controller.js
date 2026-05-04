@@ -4,13 +4,10 @@ const logger = require('../shared/logger');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'smart-orchard-secret-key-2024';
 
-// Simuler un stockage d'OTP en mémoire (Numéro -> Code)
+// In-memory OTP store: phone -> code
 const otpStore = new Map();
 
 const AuthController = {
-    /**
-     * @desc Connexion instantanee (V1 sans OTP pour le login de base)
-     */
     async login(req, res) {
         try {
             const { phone } = req.body;
@@ -19,11 +16,7 @@ const AuthController = {
                 return res.status(400).json({ error: 'Numero de telephone requis' });
             }
 
-            const jwt = require('jsonwebtoken');
-            const JWT_SECRET = process.env.JWT_SECRET || 'smart-orchard-secret-key-2024';
-
-            // On cherche ou on crée l'utilisateur directement (Connexion Instantanée V1)
-            let [user, created] = await User.findOrCreate({ 
+            const [user, created] = await User.findOrCreate({
                 where: { phone },
                 defaults: {
                     first_name: 'Nouveau',
@@ -32,17 +25,16 @@ const AuthController = {
             });
 
             if (created) {
-                logger.info(`[AUTH] ✨ Nouvel utilisateur cree pour ${phone}`);
+                logger.info(`[AUTH] New user created for ${phone}`);
             }
 
-            // Génération du token JWT immédiat
             const token = jwt.sign(
                 { id: user.id, phone: user.phone },
                 JWT_SECRET,
                 { expiresIn: '30d' }
             );
 
-            logger.info(`[AUTH] 📱 Connexion instantanee pour ${phone}`);
+            logger.info(`[AUTH] Login successful for ${phone}`);
 
             return res.json({
                 message: created ? 'Compte cree et connecte' : 'Connexion reussie',
@@ -57,14 +49,11 @@ const AuthController = {
             });
 
         } catch (err) {
-            logger.error('Erreur login instantane:', err);
+            logger.error('[AUTH] Login error:', err);
             res.status(500).json({ error: 'Erreur serveur' });
         }
     },
 
-    /**
-     * @desc Vérifier l'OTP et retourner un JWT
-     */
     async verifyOTP(req, res) {
         try {
             const { phone, otp } = req.body;
@@ -79,16 +68,13 @@ const AuthController = {
                 return res.status(401).json({ error: 'Code incorrect' });
             }
 
-            // Supprimer l'OTP après usage
             otpStore.delete(phone);
 
-            // Trouver ou créer l'utilisateur
             let user = await User.findOne({ where: { phone } });
             let isNewUser = false;
 
             if (!user) {
                 isNewUser = true;
-                // On crée un utilisateur minimal, il complétera son profil après
                 user = await User.create({
                     phone,
                     first_name: 'Nouveau',
@@ -96,7 +82,6 @@ const AuthController = {
                 });
             }
 
-            // Générer le JWT
             const token = jwt.sign(
                 { id: user.id, phone: user.phone },
                 JWT_SECRET,
@@ -115,14 +100,11 @@ const AuthController = {
             });
 
         } catch (err) {
-            logger.error('Erreur verify-otp:', err);
+            logger.error('[AUTH] OTP verification error:', err);
             res.status(500).json({ error: 'Erreur serveur' });
         }
     },
 
-    /**
-     * @desc Mettre à jour le profil (Nom/Prénom)
-     */
     async updateProfile(req, res) {
         try {
             const { first_name, last_name } = req.body;
@@ -147,14 +129,11 @@ const AuthController = {
                 }
             });
         } catch (err) {
-            logger.error('Erreur updateProfile:', err);
+            logger.error('[AUTH] Profile update error:', err);
             res.status(500).json({ error: 'Erreur serveur' });
         }
     },
 
-    /**
-     * @desc Supprimer le compte utilisateur
-     */
     async deleteAccount(req, res) {
         try {
             const user = await User.findByPk(req.user.id);
@@ -162,12 +141,10 @@ const AuthController = {
                 return res.status(404).json({ error: 'Utilisateur non trouvé' });
             }
 
-            // Supprimer l'utilisateur (CASCADE supprimera ses entrées Access et ActivityLog si lié)
             await user.destroy();
             res.json({ message: 'Compte supprimé avec succès' });
         } catch (err) {
-            console.error('ERREUR CRITIQUE deleteAccount:', err); // Log plus visible
-            logger.error('Erreur deleteAccount detail:', err);
+            logger.error('[AUTH] Account deletion error:', err);
             res.status(500).json({ error: 'Erreur serveur lors de la suppression' });
         }
     }
