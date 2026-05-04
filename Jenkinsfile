@@ -2,16 +2,22 @@ pipeline {
     agent any
 
     tools {
-        // Correspond au nom configuré dans Jenkins > Manage Jenkins > Tools
         nodejs 'node25'
     }
 
     environment {
-        // On force PM2 à trouver un dossier de configuration valide sur Windows
-        PM2_HOME = 'C:\\Users\\pc\\.pm2'
+        // Dossier public pour PM2 (évite les problèmes de droits Windows)
+        PM2_HOME = 'C:\\pm2'
     }
 
     stages {
+        stage('Preparation') {
+            steps {
+                echo 'Ensuring PM2 home exists...'
+                bat 'if not exist C:\\pm2 mkdir C:\\pm2'
+            }
+        }
+
         stage('Installation') {
             steps {
                 echo 'Installing dependencies...'
@@ -27,13 +33,18 @@ pipeline {
         }
 
         stage('Deployment') {
-            // On déploie si on est sur une branche connue
             when {
                 expression { return env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'feature/deployability' || env.GIT_BRANCH?.contains('feature/deployability') }
             }
             steps {
                 echo 'Deploying to production server with PM2...'
-                bat 'set NODE_ENV=production && npx pm2 startOrReload ecosystem.config.js'
+                // On nettoie l'ancien processus s'il existe et on relance proprement
+                bat 'set NODE_ENV=production && npx pm2 delete smart-orchard-api || echo Process not running'
+                bat 'set NODE_ENV=production && npx pm2 start ecosystem.config.js'
+                
+                // On affiche les logs immédiatement pour debug
+                echo 'Checking startup logs...'
+                bat 'npx pm2 logs smart-orchard-api --lines 20 --raw --no-colors --err'
             }
         }
     }
