@@ -7,7 +7,6 @@ pipeline {
     }
 
     environment {
-        NODE_ENV = 'production'
         // On force PM2 à trouver un dossier de configuration valide sur Windows
         PM2_HOME = 'C:\\Users\\pc\\.pm2'
     }
@@ -37,7 +36,7 @@ pipeline {
             }
             steps {
                 echo 'Deploying to production server with PM2...'
-                bat 'npx pm2 startOrReload ecosystem.config.js'
+                bat 'set NODE_ENV=production && npx pm2 startOrReload ecosystem.config.js'
             }
         }
     }
