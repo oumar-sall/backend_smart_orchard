@@ -18,8 +18,9 @@ sequelize.sync().then(async () => {
         logger.error('Startup services error:', err);
     }
 
-    app.listen(3000, '0.0.0.0', () => {
-        logger.info('Backend API server started on port 3000.');
+    const port = process.env.PORT || 3000;
+    app.listen(port, '0.0.0.0', () => {
+        logger.info(`Backend API server started on port ${port}.`);
     });
 }).catch((err) => {
     logger.error('Critical database sync error:', err);
