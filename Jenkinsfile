@@ -50,7 +50,7 @@ pipeline {
                 bat 'ping 127.0.0.1 -n 6 > nul'
                 
                 echo 'Checking logs...'
-                bat 'npx pm2 logs smart-orchard-api --lines 20 --raw --no-colors'
+                bat 'npx pm2 logs smart-orchard-api --lines 20 --raw --no-color'
             }
         }
     }
