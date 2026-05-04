@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    tools {
+        // Correspond au nom configuré dans Jenkins > Manage Jenkins > Tools
+        nodejs 'node25'
+    }
+
     environment {
         NODE_ENV = 'production'
         // On force PM2 à trouver un dossier de configuration valide sur Windows
