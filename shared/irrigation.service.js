@@ -68,20 +68,20 @@ class IrrigationService {
                     continue; // Humidité satisfaisante
                 }
 
-                // Cooldown par vanne pour éviter de renvoyer la commande d'ouverture en boucle
-                const cooldownKey = `auto_irrig_${actuator.id}`;
-                const lastTriggered = this._cooldowns?.[cooldownKey];
-                const now = Date.now();
-                if (lastTriggered && (now - lastTriggered) < 30 * 60 * 1000) continue; // 30 min cooldown
-                if (!this._cooldowns) this._cooldowns = {};
-                this._cooldowns[cooldownKey] = now;
+                const now = new Date();
+                
+                // Si la vanne est déjà ouverte et en cours d'irrigation, on ne renvoie pas la commande 
+                // pour éviter de spammer le réseau et la base de données avec des logs doublons.
+                if (actuator.timer_end && actuator.timer_end > now) {
+                    continue;
+                }
 
                 logger.info(`[AutoIrrig] Humidité ${humidityValue}% < seuil ${setting.threshold_min}% → Ouverture de ${actuator.label}`);
                 sendCommand(imei, `${actuator.pin_number},0`);
 
                 // Définir la fin du timer si une durée d'irrigation est configurée
                 if (setting.irrigation_duration) {
-                    const timerEnd = new Date(now + setting.irrigation_duration * 1000);
+                    const timerEnd = new Date(now.getTime() + setting.irrigation_duration * 1000);
                     await actuator.update({ timer_end: timerEnd });
                 }
 
@@ -96,6 +96,34 @@ class IrrigationService {
         }
     }
 
+
+    /**
+     * Appelé quand un boîtier se reconnecte au serveur TCP.
+     * Vérifie s'il y a des vannes qui devraient être ouvertes (timer_end > now)
+     * et renvoie la commande d'ouverture pour s'assurer que l'état matériel correspond à la base.
+     */
+    async restoreTimersOnReconnection(imei, sendCommand) {
+        try {
+            const controller = await Controller.findOne({ where: { imei } });
+            if (!controller) return;
+
+            const now = new Date();
+            const activeActuators = await Component.findAll({
+                where: {
+                    controller_id: controller.id,
+                    type: 'actuator',
+                    timer_end: { [Op.gt]: now }
+                }
+            });
+
+            for (const actuator of activeActuators) {
+                logger.info(`[IrrigationService] Reconnexion de ${imei}: restauration de la vanne ${actuator.label} (ouverte jusqu'à ${actuator.timer_end})`);
+                sendCommand(imei, `${actuator.pin_number},0`);
+            }
+        } catch (error) {
+            logger.error('[IrrigationService] Erreur lors de la restauration des timers:', error);
+        }
+    }
 
     startMonitoring() {
         logger.info('🚀 Irrigation monitoring service started (checking every minute).');
