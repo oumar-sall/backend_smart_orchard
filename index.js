@@ -3,8 +3,8 @@ const app = require('./app');
 const { sequelize } = require('./models');
 const logger = require('./shared/logger');
 
-logger.info('Starting database synchronization (110k+ records may take a moment)...');
-sequelize.sync().then(async () => {
+logger.info('Starting database synchronization (alter: true enabled)...');
+sequelize.sync({ alter: true }).then(async () => {
     logger.info('✅ Database synchronized and ready.');
 
     try {
