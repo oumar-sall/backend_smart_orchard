@@ -32,7 +32,7 @@ pipeline {
             when {
                 expression { 
                     def branch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: env.BRANCH ?: ""
-                    return branch.contains('main') || branch.contains('feature/deployability') 
+                    return branch.contains('main') || branch.contains('feature/deployability') || branch.contains('feature/rs485')
                 }
             }
             steps {
