@@ -50,22 +50,26 @@ const server = net.createServer((socket) => {
             // Bug shield: Delay ACK for text replies
             const isTextReply = (trame[3] === 0x03 || trame[3] === 0x04);
             const ackBuf = Buffer.concat([Buffer.from([0x02]), trame.slice(-2)]);
-            logger.info(`[TCP] 📥 Received: ${trame.toString('hex').toUpperCase()}`);
+            logger.info(`[TCP] 📥 Received Packet (${trame.length} bytes): ${trame.toString('hex').toUpperCase()}`);
             
             if (isTextReply && socket.imei) {
                 logger.info(`[TCP] ⏳ Delaying ACK for text reply: ${ackBuf.toString('hex').toUpperCase()}`);
                 socket.pendingAck = ackBuf;
                 if (socket.ackTimeout) clearTimeout(socket.ackTimeout);
                 socket.ackTimeout = setTimeout(() => {
-                    if (socket.pendingAck) {
+                    if (socket.pendingAck && socket.writable) {
                         socket.write(socket.pendingAck);
-                        logger.info(`[TCP] 📤 Sent Delayed ACK: ${socket.pendingAck.toString('hex').toUpperCase()}`);
+                        logger.info(`[TCP] 📤 Sent Delayed ACK to ${socket.imei}: ${socket.pendingAck.toString('hex').toUpperCase()}`);
                         socket.pendingAck = null;
                     }
                 }, 1500);
             } else {
-                socket.write(ackBuf);
-                logger.info(`[TCP] 📤 Sent ACK: ${ackBuf.toString('hex').toUpperCase()}`);
+                if (socket.writable) {
+                    socket.write(ackBuf);
+                    logger.info(`[TCP] 📤 Sent ACK: ${ackBuf.toString('hex').toUpperCase()}`);
+                } else {
+                    logger.warn(`[TCP] ❌ Cannot send ACK, socket not writable`);
+                }
             }
 
             try {
