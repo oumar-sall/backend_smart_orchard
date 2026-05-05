@@ -85,7 +85,7 @@ const server = net.createServer((socket) => {
                     if (data.imei && !socket.imei) {
                         socket.imei = data.imei;
                         clients.set(socket.imei, socket);
-                        IrrigationService.restoreTimersOnReconnection(socket.imei, sendCommand);
+                        // Timer restoration is handled by checkExpiredTimers() which runs every minute
                     }
                     if (!socket.imei) continue;
 
