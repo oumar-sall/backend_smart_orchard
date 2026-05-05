@@ -49,6 +49,11 @@ module.exports = (sequelize) => {
             type: DataTypes.DATE,
             allowNull: true,
         },
+        modbus_tag: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            comment: 'ID du tag Modbus configuré dans le boîtier pour ce capteur (RS485)'
+        },
     }, {
         tableName: 'components',
         timestamps: false,

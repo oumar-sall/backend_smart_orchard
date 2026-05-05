@@ -30,12 +30,16 @@ pipeline {
 
         stage('Deployment') {
             when {
-                expression { return env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'feature/deployability' || env.GIT_BRANCH?.contains('feature/deployability') }
+                expression { 
+                    def branch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: env.BRANCH ?: ""
+                    return branch.contains('main') || branch.contains('feature/deployability') 
+                }
             }
             steps {
                 echo 'Deploying to production server with PM2...'
-                bat 'npx pm2 delete smart-orchard-api || exit 0'
-                bat 'set NODE_ENV=production && npx pm2 start ecosystem.config.js'
+                // On utilise 'pm2 reload' ou 'pm2 startOrRestart' pour éviter l'erreur si l'app n'existe pas
+                bat 'npx pm2 startOrRestart ecosystem.config.js'
+                bat 'npx pm2 save'
                 echo 'Deployment successful! Data and Logs are in C:\\pm2\\SmartOrchard'
             }
         }

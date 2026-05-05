@@ -54,26 +54,27 @@ function decodeGalileo(buffer) {
                 offset += 4;
                 break;
 
-            case 0xFE: // MODBUS
+            case 0xFE: // MODBUS (User tags / configured IDs)
                 const feLength = buffer.readUInt16LE(offset);
                 offset += 2;
                 const endOfFeTag = offset + feLength;
+                if (!currentRecord.modbus) currentRecord.modbus = {};
+                
                 while (offset < endOfFeTag) {
                     const subTag = buffer.readUInt16LE(offset);
                     offset += 2;
-                    if (subTag === 0x8980 || subTag === 0xE489 || subTag === 0x89E4) {
-                        currentRecord.temp = buffer.readInt32LE(offset) / 10;
-                        offset += 4;
-                    } else if (subTag === 0x8981 || subTag === 0xE589 || subTag === 0x89E5) {
-                        currentRecord.hum = buffer.readInt32LE(offset) / 10;
-                        offset += 4;
-                    } else if (subTag === 1) {
-                        currentRecord.temp = buffer.readInt32LE(offset) / 1000;
-                        offset += 4;
-                    } else if (subTag === 2) {
-                        currentRecord.hum = buffer.readInt32LE(offset) / 1000;
-                        offset += 4;
-                    } else { offset += 4; }
+                    
+                    // Data is typically 4 bytes (Int32) in GalileoSky Modbus implementation
+                    const val = buffer.readInt32LE(offset);
+                    currentRecord.modbus[subTag] = val;
+
+                    // Keep backward compatibility for standard tags if needed
+                    if (subTag === 1) currentRecord.temp = val / 1000;
+                    else if (subTag === 2) currentRecord.hum = val / 1000;
+                    else if (subTag === 0x8980) currentRecord.temp = val / 10;
+                    else if (subTag === 0x8981) currentRecord.hum = val / 10;
+                    
+                    offset += 4;
                 }
                 offset = endOfFeTag;
                 break;
