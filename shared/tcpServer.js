@@ -232,7 +232,6 @@ async function processQueue(imei) {
 
 function start() {
     server.listen(TCP_PORT, '0.0.0.0', () => logger.info(`🚀 TCP server listening on port ${TCP_PORT}`));
-    setTimeout(() => IrrigationService.restoreTimersOnStartup(sendCommand), 2000);
 }
 
 module.exports = {
