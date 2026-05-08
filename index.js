@@ -3,19 +3,21 @@ const app = require('./app');
 const { sequelize } = require('./models');
 const logger = require('./shared/logger');
 
-logger.info('Starting database synchronization (110k+ records may take a moment)...');
+logger.info('Starting database synchronization...');
 sequelize.sync().then(async () => {
     logger.info('✅ Database synchronized and ready.');
 
     try {
         const MaintenanceService = require('./shared/maintenance.service');
+        const IrrigationService = require('./shared/irrigation.service');
         const tcpServer = require('./shared/tcpServer');
         
-        // Start TCP server and maintenance in parallel
+        // Start services
         tcpServer.start();
         MaintenanceService.purgeOldData();
+        IrrigationService.startMonitoring();
 
-        // Schedule maintenance to run every 24 hours
+        // Schedule maintenance
         setInterval(() => {
             MaintenanceService.purgeOldData();
         }, 24 * 60 * 60 * 1000);
