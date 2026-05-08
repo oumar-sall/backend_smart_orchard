@@ -301,7 +301,7 @@ const ReadingController = {
 
     async createComponent(req, res, next) {
         try {
-            const { type, pin_number, label, unit, min_value, max_value, v_min, v_max, controller_id } = req.body;
+            const { type, pin_number, label, unit, min_value, max_value, v_min, v_max, controller_id, modbus_tag } = req.body;
             if (!['sensor', 'actuator'].includes(type) || !pin_number || !label) {
                 return res.status(400).json({ error: 'Données invalides (type, pin_number, label requis)' });
             }
@@ -315,16 +315,17 @@ const ReadingController = {
                 targetControllerId = controller.id;
             }
 
-            // Vérifier si le PIN est déjà utilisé sur ce contrôleur
+            // Vérifier si le PIN + Tag est déjà utilisé sur ce contrôleur
             const existing = await Component.findOne({
                 where: {
                     controller_id: targetControllerId,
-                    pin_number
+                    pin_number,
+                    modbus_tag: modbus_tag || null
                 }
             });
 
             if (existing) {
-                return res.status(400).json({ error: `Le Pin ${pin_number} est déjà utilisé par "${existing.label}"` });
+                return res.status(400).json({ error: `Le Pin ${pin_number} (Tag ${modbus_tag || 'Standard'}) est déjà utilisé par "${existing.label}"` });
             }
 
             const newComponent = await Component.create({
@@ -336,7 +337,8 @@ const ReadingController = {
                 min_value,
                 max_value,
                 v_min: v_min !== undefined ? v_min : 0.0,
-                v_max: v_max !== undefined ? v_max : 10.0
+                v_max: v_max !== undefined ? v_max : 10.0,
+                modbus_tag: modbus_tag || null
             });
 
             if (type === 'actuator') {
@@ -353,25 +355,29 @@ const ReadingController = {
     async updateComponent(req, res, next) {
         try {
             const { id } = req.params;
-            const { pin_number, label, unit, min_value, max_value, v_min, v_max } = req.body;
+            const { pin_number, label, unit, min_value, max_value, v_min, v_max, modbus_tag } = req.body;
 
             const component = await Component.findByPk(id);
             if (!component) {
                 return res.status(404).json({ error: 'Composant introuvable' });
             }
 
-            // Si le PIN change, vérifier qu'il est libre
-            if (pin_number && pin_number !== component.pin_number) {
+            // Si le PIN ou le Tag change, vérifier qu'il est libre
+            const newPin = pin_number || component.pin_number;
+            const newTag = modbus_tag !== undefined ? modbus_tag : component.modbus_tag;
+
+            if (newPin !== component.pin_number || newTag !== component.modbus_tag) {
                 const existing = await Component.findOne({
                     where: {
                         controller_id: component.controller_id,
-                        pin_number,
+                        pin_number: newPin,
+                        modbus_tag: newTag || null,
                         id: { [Op.ne]: id } // On ignore le composant actuel
                     }
                 });
 
                 if (existing) {
-                    return res.status(400).json({ error: `Le Pin ${pin_number} est déjà utilisé par "${existing.label}"` });
+                    return res.status(400).json({ error: `Le Pin ${newPin} (Tag ${newTag || 'Standard'}) est déjà utilisé par "${existing.label}"` });
                 }
             }
 
@@ -382,7 +388,8 @@ const ReadingController = {
                 min_value: min_value !== undefined ? min_value : component.min_value,
                 max_value: max_value !== undefined ? max_value : component.max_value,
                 v_min: v_min !== undefined ? v_min : component.v_min,
-                v_max: v_max !== undefined ? v_max : component.v_max
+                v_max: v_max !== undefined ? v_max : component.v_max,
+                modbus_tag: modbus_tag !== undefined ? modbus_tag : component.modbus_tag
             });
 
             res.json({ success: true, message: 'Composant mis à jour avec succès', component });

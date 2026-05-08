@@ -50,22 +50,26 @@ const server = net.createServer((socket) => {
             // Bug shield: Delay ACK for text replies
             const isTextReply = (trame[3] === 0x03 || trame[3] === 0x04);
             const ackBuf = Buffer.concat([Buffer.from([0x02]), trame.slice(-2)]);
-            logger.info(`[TCP] 📥 Received: ${trame.toString('hex').toUpperCase()}`);
+            logger.info(`[TCP] 📥 Received Packet (${trame.length} bytes): ${trame.toString('hex').toUpperCase()}`);
             
             if (isTextReply && socket.imei) {
                 logger.info(`[TCP] ⏳ Delaying ACK for text reply: ${ackBuf.toString('hex').toUpperCase()}`);
                 socket.pendingAck = ackBuf;
                 if (socket.ackTimeout) clearTimeout(socket.ackTimeout);
                 socket.ackTimeout = setTimeout(() => {
-                    if (socket.pendingAck) {
+                    if (socket.pendingAck && socket.writable) {
                         socket.write(socket.pendingAck);
-                        logger.info(`[TCP] 📤 Sent Delayed ACK: ${socket.pendingAck.toString('hex').toUpperCase()}`);
+                        logger.info(`[TCP] 📤 Sent Delayed ACK to ${socket.imei}: ${socket.pendingAck.toString('hex').toUpperCase()}`);
                         socket.pendingAck = null;
                     }
                 }, 1500);
             } else {
-                socket.write(ackBuf);
-                logger.info(`[TCP] 📤 Sent ACK: ${ackBuf.toString('hex').toUpperCase()}`);
+                if (socket.writable) {
+                    socket.write(ackBuf);
+                    logger.info(`[TCP] 📤 Sent ACK: ${ackBuf.toString('hex').toUpperCase()}`);
+                } else {
+                    logger.warn(`[TCP] ❌ Cannot send ACK, socket not writable`);
+                }
             }
 
             try {
@@ -109,7 +113,22 @@ const server = net.createServer((socket) => {
                                 '1-WIRE': data.tempW,
                             };
 
-                            let rawValue = pinMap[comp.pin_number];
+                            let rawValue;
+
+                            // Si le composant a un tag Modbus spécifique (RS485)
+                            if (comp.modbus_tag !== null && data.modbus && data.modbus[comp.modbus_tag] !== undefined) {
+                                rawValue = data.modbus[comp.modbus_tag];
+                                
+                                // Normalisation : certains tags sont en millièmes (1, 2) d'autres en dixièmes (0x8980)
+                                if (comp.modbus_tag === 1 || comp.modbus_tag === 2) {
+                                    rawValue = rawValue / 1000;
+                                } else {
+                                    // Par défaut, la plupart des capteurs Modbus (comme le TZ-THT03R) utilisent 1 décimale (/10)
+                                    rawValue = rawValue / 10;
+                                }
+                            } else {
+                                rawValue = pinMap[comp.pin_number];
+                            }
 
                             if (rawValue !== undefined) {
                                 let finalValue = rawValue;
@@ -213,7 +232,6 @@ async function processQueue(imei) {
 
 function start() {
     server.listen(TCP_PORT, '0.0.0.0', () => logger.info(`🚀 TCP server listening on port ${TCP_PORT}`));
-    setTimeout(() => IrrigationService.restoreTimersOnStartup(sendCommand), 2000);
 }
 
 module.exports = {

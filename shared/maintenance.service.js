@@ -26,7 +26,7 @@ const MaintenanceService = {
 
             const deletedLogs = await ActivityLog.destroy({
                 where: {
-                    created_at: { [Op.lt]: logsThreshold }
+                    timestamp: { [Op.lt]: logsThreshold }
                 }
             });
 
