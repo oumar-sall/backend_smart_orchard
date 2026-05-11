@@ -116,17 +116,23 @@ const server = net.createServer((socket) => {
                             let rawValue;
 
                             // Si le composant a un tag Modbus spécifique (RS485)
-                            if (comp.modbus_tag !== null && data.modbus && data.modbus[comp.modbus_tag] !== undefined) {
-                                rawValue = data.modbus[comp.modbus_tag];
+                            if (comp.modbus_tag !== null) {
+                                // On cherche soit dans l'objet 'modbus' (tag 0xFE) soit dans les propriétés directes (tags 0x50-0x5F)
+                                rawValue = data.modbus?.[comp.modbus_tag] ?? data[`modbus${comp.modbus_tag}`];
                                 
-                                // Normalisation : certains tags sont en millièmes (1, 2) d'autres en dixièmes (0x8980)
-                                if (comp.modbus_tag === 1 || comp.modbus_tag === 2) {
-                                    rawValue = rawValue / 1000;
-                                } else {
-                                    // Par défaut, la plupart des capteurs Modbus (comme le TZ-THT03R) utilisent 1 décimale (/10)
-                                    rawValue = rawValue / 10;
+                                if (rawValue !== undefined) {
+                                    // Normalisation : certains tags sont en millièmes (1, 2) d'autres en dixièmes
+                                    if (comp.modbus_tag === 1 || comp.modbus_tag === 2) {
+                                        rawValue = rawValue / 1000;
+                                    } else {
+                                        // Par défaut, la plupart des capteurs Modbus utilisent 1 décimale (/10)
+                                        // Note: Si la donnée vient des tags 0x50-0x5F, elle est souvent brute et nécessite division
+                                        rawValue = rawValue / 10;
+                                    }
                                 }
-                            } else {
+                            }
+
+                            if (rawValue === undefined) {
                                 rawValue = pinMap[comp.pin_number];
                             }
 

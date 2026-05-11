@@ -1,5 +1,4 @@
 const { Component, Controller, ActivityLog, Setting } = require('../models');
-const tcpServer = require('./tcpServer');
 const logger = require('./logger');
 const { Op } = require('sequelize');
 
@@ -25,6 +24,7 @@ class IrrigationService {
                     logger.info(`[IrrigationService] Auto-closing expired component: ${component.label} (${component.pin_number})`);
                     
                     // Envoi de la commande de fermeture (le hardware attend souvent "1" pour fermer)
+                    const tcpServer = require('./tcpServer');
                     tcpServer.sendCommand(component.Controller.imei, `${component.pin_number},1`);
                     
                     // Mise à jour en base
