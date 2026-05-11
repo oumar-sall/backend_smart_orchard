@@ -69,7 +69,6 @@ function decodeGalileo(buffer) {
                     // Safety check for 4-byte value
                     if (offset + 4 <= endOfFeTag) {
                         const val = buffer.readInt32LE(offset);
-                        logger.info(`[Protocol] Modbus Raw: SubTag=${subTag}, Value=${val}`);
                         currentRecord.modbus[subTag] = val;
 
                         if (subTag === 1) currentRecord.temp = val / 1000;
@@ -82,7 +81,6 @@ function decodeGalileo(buffer) {
                         // Fallback for 2-byte values if remaining space is small
                         if (offset + 2 <= endOfFeTag) {
                             const val = buffer.readInt16LE(offset);
-                            logger.info(`[Protocol] Modbus Raw (Short): SubTag=${subTag}, Value=${val}`);
                             currentRecord.modbus[subTag] = val;
                             offset += 2;
                         } else {
