@@ -1,20 +1,26 @@
 const { Sequelize } = require('sequelize');
 const path = require('path');
 
-const sequelize = new Sequelize({
-    dialect: 'sqlite',
-    storage: process.env.NODE_ENV === 'test' ? ':memory:' : (process.env.DATABASE_STORAGE || 'C:\\pm2\\SmartOrchard\\data\\smart_orchard_v1.db'),
-    logging: false,
-    dialectOptions: {
-        foreignKeys: true // Pour que Sequelize active les PRAGMA si possible
-    },
-    // Backup pour s'assurer que c'est activé sur chaque connexion
-    pool: {
-        afterConnect: (conn, cb) => {
-            conn.run('PRAGMA foreign_keys = ON', cb);
+let sequelize;
+if (process.env.NODE_ENV === 'test') {
+    sequelize = new Sequelize({
+        dialect: 'sqlite',
+        storage: ':memory:',
+        logging: false
+    });
+} else {
+    sequelize = new Sequelize(
+        process.env.DB_NAME || 'smart_orchard',
+        process.env.DB_USER || 'postgres',
+        process.env.DB_PASSWORD || '',
+        {
+            host: process.env.DB_HOST || 'localhost',
+            port: process.env.DB_PORT || 5432,
+            dialect: 'postgres',
+            logging: false
         }
-    }
-});
+    );
+}
 
 // Import des modèles
 const Controller  = require('./controller')(sequelize);
