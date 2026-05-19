@@ -408,8 +408,9 @@ const ReadingController = {
                 return res.status(404).json({ error: 'Composant introuvable' });
             }
 
-            // Disable FK constraints for SQLite during deletion
-            await sequelize.query('PRAGMA foreign_keys = OFF');
+            // Disable FK constraints for SQLite during deletion (not needed/supported in Postgres)
+            const isSqlite = sequelize.getDialect() === 'sqlite';
+            if (isSqlite) await sequelize.query('PRAGMA foreign_keys = OFF');
 
             try {
                 await Setting.update({ sensor_id: null }, { where: { sensor_id: id } });
@@ -419,7 +420,7 @@ const ReadingController = {
 
                 res.json({ success: true, message: 'Composant supprimé avec succès' });
             } finally {
-                await sequelize.query('PRAGMA foreign_keys = ON');
+                if (isSqlite) await sequelize.query('PRAGMA foreign_keys = ON');
             }
         } catch (err) {
             logger.error('[Reading] Error deleting component:', err);
