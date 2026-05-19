@@ -32,15 +32,15 @@ pipeline {
             when {
                 expression { 
                     def branch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: env.BRANCH ?: ""
-                    return branch.contains('main') || branch.contains('feature/deployability') || branch.contains('feature/rs485')
+                    return branch.contains('main')
                 }
             }
             steps {
-                echo 'Deploying to production server with PM2...'
-                // On utilise 'pm2 reload' ou 'pm2 startOrRestart' pour éviter l'erreur si l'app n'existe pas
-                bat 'npx pm2 startOrRestart ecosystem.config.js'
-                bat 'npx pm2 save'
-                echo 'Deployment successful! Data and Logs are in C:\\pm2\\SmartOrchard'
+                echo 'Deploying to production server with Docker Compose...'
+                // Stoppe l'ancienne version, reconstruit l'image et redémarre la BDD et l'API
+                bat 'docker-compose down'
+                bat 'docker-compose up -d --build'
+                echo 'Deployment successful! Application is running via Docker on port 3000.'
             }
         }
     }

@@ -12,7 +12,12 @@ const authRoutes = require('./routes/auth.routes');
 
 const app = express();
 
-app.use(morgan('dev'));
+// Clean up console logs: ignore repetitive polling requests if they are successful
+app.use(morgan('dev', {
+    skip: function (req, res) {
+        return req.url.includes('/readings/') && res.statusCode < 400;
+    }
+}));
 app.use(cors());
 app.use(express.json());
 

@@ -33,10 +33,14 @@ const MaintenanceService = {
             if (deletedReadings > 0 || deletedLogs > 0) {
                 logger.info(`[Maintenance] ✨ Purge complete: ${deletedReadings} readings and ${deletedLogs} logs removed.`);
                 
-                // VACUUM pour récupérer l'espace disque et optimiser SQLite
+                // Reclaim disk space
                 const { sequelize } = require('../models');
-                await sequelize.query('VACUUM'); 
-                logger.info('[Maintenance] 🚀 Database optimized (VACUUM complete).');
+                if (sequelize.getDialect() === 'sqlite') {
+                    await sequelize.query('VACUUM'); 
+                    logger.info('[Maintenance] 🚀 SQLite Database optimized (VACUUM complete).');
+                } else {
+                    logger.info('[Maintenance] 🚀 Postgres will handle disk space optimization automatically (autovacuum).');
+                }
             } else {
                 logger.info('[Maintenance] ✅ No old data to purge.');
             }
