@@ -342,7 +342,7 @@ const ReadingController = {
             });
 
             if (type === 'actuator') {
-                await Setting.create({ component_id: newComponent.id });
+                await Setting.create({ component_id: newComponent.id, irrigation_duration: 900 });
             }
 
             res.json(newComponent);
