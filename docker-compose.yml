@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: smart_orchard_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-smart_orchard}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build: .
+    container_name: smart_orchard_api
+    restart: unless-stopped
+    depends_on:
+      - db
+    ports:
+      - "3000:3000"
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - TCP_PORT=5000
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_NAME=${DB_NAME:-smart_orchard}
+      - JWT_SECRET=${JWT_SECRET:-your_secret_key_here}
+    volumes:
+      - ./logs:/usr/src/app/logs
+
+volumes:
+  pgdata:
