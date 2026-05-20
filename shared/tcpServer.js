@@ -47,7 +47,7 @@ const server = net.createServer((socket) => {
             if (cursor + trameSize > socket.sessionBuffer.length) break;
             const trame = socket.sessionBuffer.slice(cursor, cursor + trameSize);
 
-            // Bug shield: Delay ACK for text replies
+            // Delay ACK for text replies to avoid race conditions
             const isTextReply = (trame[3] === 0x03 || trame[3] === 0x04);
             const ackBuf = Buffer.concat([Buffer.from([0x02]), trame.slice(-2)]);
             logger.debug(`[TCP] 📥 Received Packet (${trame.length} bytes): ${trame.toString('hex').toUpperCase()}`);
@@ -115,18 +115,18 @@ const server = net.createServer((socket) => {
 
                             let rawValue;
 
-                            // Si le composant a un tag Modbus spécifique (RS485)
+                            // If the component has a specific Modbus tag (RS485)
                             if (comp.modbus_tag !== null) {
-                                // On cherche soit dans l'objet 'modbus' (tag 0xFE) soit dans les propriétés directes (tags 0x50-0x5F)
+                                // Look either in the 'modbus' object (tag 0xFE) or in direct properties (tags 0x50-0x5F)
                                 rawValue = data.modbus?.[comp.modbus_tag] ?? data[`modbus${comp.modbus_tag}`];
                                 
                                 if (rawValue !== undefined) {
-                                    // Normalisation : certains tags sont en millièmes (1, 2) d'autres en dixièmes
+                                    // Normalization: some tags are in thousandths (1, 2), others in tenths
                                     if (comp.modbus_tag === 1 || comp.modbus_tag === 2) {
                                         rawValue = rawValue / 1000;
                                     } else {
-                                        // Par défaut, la plupart des capteurs Modbus utilisent 1 décimale (/10)
-                                        // Note: Si la donnée vient des tags 0x50-0x5F, elle est souvent brute et nécessite division
+                                        // By default, most Modbus sensors use 1 decimal place (/10)
+                                        // Note: If data comes from tags 0x50-0x5F, it is often raw and needs division
                                         rawValue = rawValue / 10;
                                     }
                                 }
@@ -138,7 +138,7 @@ const server = net.createServer((socket) => {
 
                             if (rawValue !== undefined) {
                                 let finalValue = rawValue;
-                                // Calibration logic
+                                // Calibration logic for analog voltage inputs
                                 if ((comp.pin_number.startsWith('IN ') || comp.pin_number.startsWith('VOL ')) && comp.min_value !== null && comp.max_value !== null) {
                                     const vRecu = rawValue / 1000;
                                     const vMin = comp.v_min ?? 0;
@@ -172,7 +172,6 @@ const server = net.createServer((socket) => {
     socket.on('close', () => {
         if (socket.imei) {
             clients.delete(socket.imei);
-            // We could add a failsafe log here if needed
         }
     });
 

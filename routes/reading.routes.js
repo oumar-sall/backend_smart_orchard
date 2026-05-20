@@ -5,7 +5,7 @@ const { authenticateToken } = require('../middlewares/auth.middleware');
 
 const router = Router();
 
-// Toutes les routes de lecture et commande nécessitent une authentification
+// All reading and control routes require authentication
 router.use(authenticateToken);
 
 /**
@@ -56,12 +56,11 @@ router.get('/sensors', ReadingController.getSensors);
  *         description: Commande envoyée
  */
 router.post('/irrigation', ReadingController.toggleIrrigation);
-router.post('/simulate', ReadingController.simulateHumidity); // 🧪 Test seuil auto
 router.post('/components', ReadingController.createComponent);
 router.put('/components/:id', ReadingController.updateComponent);
 router.delete('/components/:id', ReadingController.deleteComponent);
 
-// Paramètres
+// Settings
 router.get('/settings', SettingController.getSettings);
 router.put('/settings', SettingController.updateSettings);
 

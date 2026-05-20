@@ -4,8 +4,8 @@ const { Op } = require('sequelize');
 
 class IrrigationService {
     /**
-     * Vérifie toutes les minutes s'il y a des irrigations dont le timer est dépassé.
-     * Cette méthode est persistante même après un redémarrage serveur.
+     * Checks every minute if any irrigation timers have expired.
+     * This method is persistent across server restarts.
      */
     async checkExpiredTimers() {
         try {
@@ -23,14 +23,14 @@ class IrrigationService {
                 if (component.Controller) {
                     logger.info(`[IrrigationService] Auto-closing expired component: ${component.label} (${component.pin_number})`);
                     
-                    // Envoi de la commande de fermeture (le hardware attend souvent "1" pour fermer)
+                    // Send close command (hardware expects "1" to close)
                     const tcpServer = require('./tcpServer');
                     tcpServer.sendCommand(component.Controller.imei, `${component.pin_number},1`);
                     
-                    // Mise à jour en base
+                    // Update database
                     await component.update({ timer_end: null });
 
-                    // Log d'activité
+                    // Log activity
                     await ActivityLog.create({
                         controller_id: component.controller_id,
                         event_type: 'IRRIGATION',
@@ -44,12 +44,12 @@ class IrrigationService {
     }
 
     /**
-     * Vérifie si une lecture d'humidité déclenche l'irrigation automatique.
-     * Appelée par tcpServer à chaque nouvelle lecture d'un capteur d'humidité.
+     * Checks whether a humidity reading triggers automatic irrigation.
+     * Called by tcpServer on every new humidity sensor reading.
      */
     async runAutoIrrigationCheck(humidityValue, componentId, imei, controller, sendCommand) {
         try {
-            // Trouver toutes les vannes configurées en mode auto et liées à ce capteur
+            // Find all actuators configured in auto mode and linked to this sensor
             const actuators = await Component.findAll({
                 where: { controller_id: controller.id, type: 'actuator' },
                 include: [{
@@ -65,13 +65,13 @@ class IrrigationService {
                 if (!setting || setting.threshold_min === null) continue;
 
                 if (humidityValue >= setting.threshold_min) {
-                    continue; // Humidité satisfaisante
+                    continue; // Humidity is sufficient
                 }
 
                 const now = new Date();
                 
-                // Si la vanne est déjà ouverte et en cours d'irrigation, on ne renvoie pas la commande 
-                // pour éviter de spammer le réseau et la base de données avec des logs doublons.
+                // If the valve is already open and irrigating, skip to avoid
+                // spamming the network and database with duplicate logs.
                 if (actuator.timer_end && actuator.timer_end > now) {
                     continue;
                 }
@@ -79,7 +79,7 @@ class IrrigationService {
                 logger.info(`[AutoIrrig] Humidité ${humidityValue}% < seuil ${setting.threshold_min}% → Ouverture de ${actuator.label}`);
                 sendCommand(imei, `${actuator.pin_number},0`);
 
-                // Définir la fin du timer si une durée d'irrigation est configurée
+                // Set timer end if an irrigation duration is configured
                 if (setting.irrigation_duration) {
                     const timerEnd = new Date(now.getTime() + setting.irrigation_duration * 1000);
                     await actuator.update({ timer_end: timerEnd });
@@ -98,9 +98,9 @@ class IrrigationService {
 
 
     /**
-     * Appelé quand un boîtier se reconnecte au serveur TCP.
-     * Vérifie s'il y a des vannes qui devraient être ouvertes (timer_end > now)
-     * et renvoie la commande d'ouverture pour s'assurer que l'état matériel correspond à la base.
+     * Called when a controller reconnects to the TCP server.
+     * Checks for valves that should be open (timer_end > now)
+     * and resends the open command to ensure hardware state matches the database.
      */
     async restoreTimersOnReconnection(imei, sendCommand) {
         try {
@@ -127,10 +127,10 @@ class IrrigationService {
 
     startMonitoring() {
         logger.info('🚀 Irrigation monitoring service started (checking every minute).');
-        // Première vérification immédiate au démarrage
+        // Initial check on startup
         this.checkExpiredTimers();
         
-        // Puis toutes les 60 secondes
+        // Then every 60 seconds
         setInterval(() => {
             this.checkExpiredTimers();
         }, 60 * 1000);

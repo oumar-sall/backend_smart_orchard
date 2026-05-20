@@ -4,7 +4,7 @@ const { authenticateToken } = require('../middlewares/auth.middleware');
 const router = express.Router();
 const activityLogController = require('../controllers/activityLog.controller');
 
-// Toutes les routes du journal nécessitent une authentification
+// All activity log routes require authentication
 router.use(authenticateToken);
 
 router.get('/', activityLogController.getActivityLogs);

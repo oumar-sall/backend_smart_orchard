@@ -172,14 +172,14 @@ const ReadingController = {
         try {
             const { action, componentId } = req.body;
 
-            // On récupère le composant pour connaître son pin_number
+            // Retrieve component to know its pin_number
             const component = await Component.findByPk(componentId, { include: [Setting] });
             if (!component) {
                 logger.error(`[Reading] Component ID ${componentId} not found`);
                 return res.status(404).json({ error: "Composant non trouvé" });
             }
 
-            // Construction générique de la commande: PIN + "," + COMMANDE
+            // generic construction of the command: PIN + "," + COMMAND
             const actionValue = action === 'open' ? '0' : '1';
             const command = `${component.pin_number},${actionValue}`;
 
@@ -201,7 +201,7 @@ const ReadingController = {
                     
                     await component.update({ timer_end: timerEnd });
 
-                    // Programmation de la fermeture automatique
+                    // Schedule automatic closing
                     setTimeout(async () => {
                         try {
                             const freshComp = await Component.findByPk(component.id);
@@ -315,7 +315,7 @@ const ReadingController = {
                 targetControllerId = controller.id;
             }
 
-            // Vérifier si le PIN + Tag est déjà utilisé sur ce contrôleur
+            // Verify if the PIN + Tag is already used on this controller
             const existing = await Component.findOne({
                 where: {
                     controller_id: targetControllerId,
@@ -362,7 +362,7 @@ const ReadingController = {
                 return res.status(404).json({ error: 'Composant introuvable' });
             }
 
-            // Si le PIN ou le Tag change, vérifier qu'il est libre
+            //  If PIN or Tag change, verify if its free on this controller
             const newPin = pin_number || component.pin_number;
             const newTag = modbus_tag !== undefined ? modbus_tag : component.modbus_tag;
 
@@ -372,7 +372,7 @@ const ReadingController = {
                         controller_id: component.controller_id,
                         pin_number: newPin,
                         modbus_tag: newTag || null,
-                        id: { [Op.ne]: id } // On ignore le composant actuel
+                        id: { [Op.ne]: id } // Ignore the current component
                     }
                 });
 
@@ -426,54 +426,7 @@ const ReadingController = {
             logger.error('[Reading] Error deleting component:', err);
             res.status(500).json({ error: 'Erreur lors de la suppression', details: err.message });
         }
-    },
-
-    /**
-     * POST /readings/simulate
-     * Body: { humidity: number, pin?: string }
-     * Simule une lecture capteur pour tester la logique d'arrosage automatique.
-     */
-    async simulateHumidity(req, res, next) {
-        try {
-            const { humidity, pin, controller_id } = req.body;
-            if (humidity === undefined || isNaN(humidity)) {
-                return res.status(400).json({ error: 'Champ "humidity" (number) requis' });
-            }
-
-            // Récupère le contrôleur spécifié ou le premier
-            const controller = await Controller.findOne({
-                where: controller_id ? { id: controller_id } : {},
-                order: controller_id ? [] : [['id', 'ASC']],
-                include: [{
-                    model: Component,
-                    include: [Setting]
-                }]
-            });
-            if (!controller) return res.status(404).json({ error: 'Aucun contrôleur trouvé' });
-
-            // Trouve le composant humidité (par defaut PINS.HUM)
-            const targetPin = pin || PINS.HUM;
-            const humComp = controller.Components.find(c => c.pin_number === targetPin);
-            if (!humComp) {
-                return res.status(404).json({ error: `Composant '${targetPin}' introuvable` });
-            }
-
-
-            const IrrigationService = require('../shared/irrigation.service');
-            const tcpServer = require('../shared/tcpServer');
-            await IrrigationService.runAutoIrrigationCheck(humidity, humComp.id, controller.imei, controller, tcpServer.sendCommand);
-
-            res.json({
-                ok: true,
-                message: `Simulation exécutée: hum=${humidity}% sur capteur '${targetPin}'`,
-                controller: controller.name,
-                imei: controller.imei,
-            });
-        } catch (err) {
-            next(err);
-        }
     }
 };
-
 
 module.exports = ReadingController;

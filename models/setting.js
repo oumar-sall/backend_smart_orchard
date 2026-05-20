@@ -30,7 +30,7 @@ module.exports = (sequelize) => {
         },
         sensor_id: {
             type: DataTypes.UUID,
-            allowNull: true, // Peut être nul si pas de capteur associé
+            allowNull: true, // Can be null if no sensor is linked
         },
     }, {
 

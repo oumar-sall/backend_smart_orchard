@@ -22,7 +22,7 @@ if (process.env.NODE_ENV === 'test') {
     );
 }
 
-// Import des modèles
+// Import models
 const Controller  = require('./controller')(sequelize);
 const Component   = require('./component')(sequelize);
 const Reading     = require('./reading')(sequelize);
@@ -45,7 +45,7 @@ Reading.belongsTo(Component, { foreignKey: 'component_id' });
 Component.hasOne(Setting, { foreignKey: 'component_id', onDelete: 'CASCADE' });
 Setting.belongsTo(Component, { foreignKey: 'component_id' });
 
-// Setting ↔ Component (Optional sensor reference)
+// Setting ↔ Component (optional sensor reference)
 Setting.belongsTo(Component, { as: 'Sensor', foreignKey: 'sensor_id', onDelete: 'SET NULL' });
 Component.hasMany(Setting, { as: 'AffectedSettings', foreignKey: 'sensor_id', onDelete: 'SET NULL' });
 
@@ -53,7 +53,7 @@ Component.hasMany(Setting, { as: 'AffectedSettings', foreignKey: 'sensor_id', on
 Controller.hasMany(ActivityLog, { foreignKey: 'controller_id', onDelete: 'CASCADE' });
 ActivityLog.belongsTo(Controller, { foreignKey: 'controller_id' });
  
-// ── Associations d'accès Utilisateurs ───────────────────────────
+// ── User access associations ─────────────────────────────────────
  
 // User ↔ Controller (M:N via Access)
 User.belongsToMany(Controller, { through: Access, foreignKey: 'user_id' });
@@ -71,7 +71,7 @@ ActivityLog.belongsTo(User, { foreignKey: 'user_id' });
 
 
 
-// ── Export ───────────────────────────────────────────────────────
+// ── Export ──────────────────────────────────────────────────────
 module.exports = {
     sequelize,
     Controller,
