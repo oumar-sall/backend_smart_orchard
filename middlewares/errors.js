@@ -1,6 +1,6 @@
 /**
- * Erreurs métier typées
- * Permettent au errorHandler de choisir le bon code HTTP automatiquement
+ * Typed application errors
+ * Allow the errorHandler to select the correct HTTP status code automatically
  */
 
 class AppError extends Error {

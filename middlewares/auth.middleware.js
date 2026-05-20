@@ -29,14 +29,14 @@ const authenticateToken = async (req, res, next) => {
 };
 
 /**
- * Middleware optionnel pour vérifier si l'utilisateur a accès à un contrôleur spécifique.
- * Utilisation : router.get('/:controllerId', authenticateToken, checkControllerAccess, ...)
+ * Optional middleware to verify if the user has access to a specific controller.
+ * Usage: router.get('/:controllerId', authenticateToken, checkControllerAccess, ...)
  */
 const checkControllerAccess = async (req, res, next) => {
     const controllerId = req.params.controllerId || req.body.controller_id;
 
     if (!controllerId) {
-        return next(); // Pas d'ID de contrôleur à vérifier
+        return next(); // No controller ID to verify
     }
 
     try {

@@ -12,7 +12,7 @@ module.exports = (sequelize) => {
             allowNull: false,
         },
         type: {
-            type: DataTypes.STRING, // 'sensor' ou 'actuator'
+            type: DataTypes.STRING, // 'sensor' or 'actuator'
             allowNull: false,
         },
         pin_number: {
@@ -52,7 +52,7 @@ module.exports = (sequelize) => {
         modbus_tag: {
             type: DataTypes.INTEGER,
             allowNull: true,
-            comment: 'ID du tag Modbus configuré dans le boîtier pour ce capteur (RS485)'
+            comment: 'ID of the Modbus tag configured in the controller for this sensor (RS485)'
         },
     }, {
         tableName: 'components',

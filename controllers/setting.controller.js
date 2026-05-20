@@ -19,7 +19,7 @@ const SettingController = {
             });
 
             if (settings && settings.Component && settings.Component.Controller) {
-                // On injecte l'intervalle global du contrôleur dans le retour JSON
+                // global controller injection in json response
                 settings.dataValues.reporting_interval = settings.Component.Controller.reporting_interval;
             }
 
@@ -63,7 +63,6 @@ const SettingController = {
                     description: `Réglages mis à jour pour : ${settings.Component.label}`
                 });
 
-                // Si l'intervalle a changé (Global), on met à jour le Controller
                 if (reporting_interval !== undefined && reporting_interval !== oldInterval) {
                     const controller = settings.Component?.Controller;
                     if (controller) {

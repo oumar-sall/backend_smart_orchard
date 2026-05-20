@@ -2,13 +2,13 @@ const logger = require('./logger');
 
 const smsService = {
     /**
-     * Envoie un SMS via le premier boîtier GalileoSky disponible.
-     * @param {string} phone - Numéro de téléphone destinataire
-     * @param {string} message - Contenu du message
-     * @returns {boolean} - True si une commande a été mise en file, false sinon.
+     * Sends an SMS via the first available GalileoSky controller.
+     * @param {string} phone - Recipient phone number
+     * @param {string} message - Message content
+     * @returns {boolean} - True if a command was queued, false otherwise.
      */
     sendSms(phone, message) {
-        // Import dynamique pour éviter les dépendances circulaires au démarrage
+        // Dynamic import to avoid circular dependencies at startup
         const tcpServer = require('./tcpServer');
 
         if (!tcpServer.clients || tcpServer.clients.size === 0) {
@@ -16,20 +16,20 @@ const smsService = {
             return false;
         }
 
-        // Récupérer le premier IMEI disponible
+        // Get the first available IMEI
         const firstImei = tcpServer.clients.keys().next().value;
         
-        // 1. Normalisation du numéro pour Galileosky (préfixe 00 requis)
+        // 1. Normalize phone number for Galileosky (00 prefix required)
         const numericPart = phone.replace(/\D/g, '');
         const formattedPhone = phone.startsWith('+') ? `00${phone.slice(1)}` : (phone.startsWith('00') ? phone : `00${numericPart}`);
 
-        // 2. Nettoyage du message (Pas d'accents ni caractères spéciaux)
+        // 2. Sanitize message (no accents or special characters)
         const cleanMsg = message.normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "") // Supprime les accents
-            .replace(/[^a-zA-Z0-9\s:,.!]/g, ""); // Ne garde que les 26 lettres, chiffres et ponctuation simple
+            .replace(/[\u0300-\u036f]/g, "") // Strip accents
+            .replace(/[^a-zA-Z0-9\s:,.!]/g, ""); // Keep only letters, digits and basic punctuation
 
-        // 3. Syntaxe simplifiée (GPRS) : SENDSMS [Phone], [Message]
-        // Note: On retire le password car le boîtier l'interprétait souvent comme le numéro de tel.
+        // 3. Simplified syntax (GPRS): SENDSMS [Phone], [Message]
+        // Note: Password removed as the controller often interpreted it as the phone number.
         const cmd = `SENDSMS ${formattedPhone}, ${cleanMsg}`;
         
         logger.info(`[SMS] 📤 Envoi via ${firstImei} : ${cmd}`);

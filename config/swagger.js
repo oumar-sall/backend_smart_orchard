@@ -32,7 +32,7 @@ const options = {
       },
     ],
   },
-  apis: ['./routes/*.js', './controllers/*.js'], // Où chercher les annotations
+  apis: ['./routes/*.js', './controllers/*.js'], // when to search for annotations
 };
 
 const specs = swaggerJsdoc(options);

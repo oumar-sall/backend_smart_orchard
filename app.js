@@ -21,7 +21,7 @@ app.use(morgan('dev', {
 app.use(cors());
 app.use(express.json());
 
-// Documentation Swagger
+// Swagger documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerFile));
 
 // Routes
