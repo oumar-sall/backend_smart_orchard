@@ -236,6 +236,7 @@ async function processQueue(imei) {
 }
 
 function start() {
+    console.log("tcp server is starting", `TCP Port = ${TCP_PORT}`);
     server.listen(TCP_PORT, '0.0.0.0', () => logger.info(`🚀 TCP server listening on port ${TCP_PORT}`));
 }
 
