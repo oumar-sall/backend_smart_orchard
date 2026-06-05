@@ -4,6 +4,17 @@ const { PINS } = require('../shared/enums');
 const logger = require('../shared/logger');
 
 const ReadingController = {
+    async checkExpiredTimers(req, res, next) {
+        try {
+            const IrrigationService = require('../shared/irrigation.service');
+            await IrrigationService.checkExpiredTimers();
+            res.json({ success: true, message: "Vérification des timers effectuée" });
+        } catch (err) {
+            logger.error('[Reading] Error in checkExpiredTimers:', err);
+            res.status(500).json({ error: "Erreur lors de la vérification", details: err.message });
+        }
+    },
+
     async getLatestDashboard(req, res, next) {
         try {
             const { controller_id } = req.query;

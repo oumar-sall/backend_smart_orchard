@@ -125,6 +125,7 @@ class IrrigationService {
         }
     }
 
+/*
     startMonitoring() {
         logger.info('🚀 Irrigation monitoring service started (checking every minute).');
         // Initial check on startup
@@ -135,6 +136,7 @@ class IrrigationService {
             this.checkExpiredTimers();
         }, 60 * 1000);
     }
+*/
 }
 
 module.exports = new IrrigationService();

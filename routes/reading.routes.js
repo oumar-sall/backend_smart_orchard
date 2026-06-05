@@ -5,6 +5,18 @@ const { authenticateToken } = require('../middlewares/auth.middleware');
 
 const router = Router();
 
+/**
+ * @swagger
+ * /readings/check-expired:
+ *   post:
+ *     summary: Déclencher manuellement la fermeture des vannes expirées (Utilisé par le Cron)
+ *     tags: [Control]
+ *     responses:
+ *       200:
+ *         description: Vérification effectuée
+ */
+router.post('/check-expired', ReadingController.checkExpiredTimers);
+
 // All reading and control routes require authentication
 router.use(authenticateToken);
 
@@ -56,6 +68,7 @@ router.get('/sensors', ReadingController.getSensors);
  *         description: Commande envoyée
  */
 router.post('/irrigation', ReadingController.toggleIrrigation);
+
 router.post('/components', ReadingController.createComponent);
 router.put('/components/:id', ReadingController.updateComponent);
 router.delete('/components/:id', ReadingController.deleteComponent);

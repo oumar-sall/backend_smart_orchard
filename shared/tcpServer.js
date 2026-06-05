@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const net = require('net');
 const { EventEmitter } = require('events');
 const { Controller, Component, Reading, Setting, ActivityLog } = require('../models');
@@ -7,7 +7,6 @@ const logger = require('./logger');
 
 // New modules
 const protocol = require('./galileo.protocol');
-const IrrigationService = require('./irrigation.service');
 
 const TCP_PORT = process.env.TCP_PORT || 5000;
 const clients = new Map(); // IMEI -> Socket
@@ -85,6 +84,7 @@ const server = net.createServer((socket) => {
                     if (data.imei && !socket.imei) {
                         socket.imei = data.imei;
                         clients.set(socket.imei, socket);
+                        const IrrigationService = require('./irrigation.service');
                         IrrigationService.restoreTimersOnReconnection(socket.imei, sendCommand);
                     }
                     if (!socket.imei) continue;
@@ -153,6 +153,7 @@ const server = net.createServer((socket) => {
 
                                 const isLatest = records.indexOf(data) === records.length - 1;
                                 if (isLatest && (comp.pin_number === PINS.HUM || comp.label?.toLowerCase().includes('humidité'))) {
+                                    const IrrigationService = require('./irrigation.service');
                                     await IrrigationService.runAutoIrrigationCheck(finalValue, comp.id, socket.imei, controller, sendCommand);
                                 }
                             }
@@ -236,7 +237,6 @@ async function processQueue(imei) {
 }
 
 function start() {
-    console.log("tcp server is starting", `TCP Port = ${TCP_PORT}`);
     server.listen(TCP_PORT, '0.0.0.0', () => logger.info(`🚀 TCP server listening on port ${TCP_PORT}`));
 }
 
@@ -245,3 +245,5 @@ module.exports = {
     clients,
     start
 };
+
+
