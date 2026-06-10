@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const { sequelize } = require('./models');
 const logger = require('./shared/logger');
 const express = require('express');
@@ -42,13 +42,13 @@ sequelize.sync().then(async () => {
 
     try {
         const MaintenanceService = require('./shared/maintenance.service');
-        const IrrigationService = require('./shared/irrigation.service');
+        //const IrrigationService = require('./shared/irrigation.service');
         const tcpServer = require('./shared/tcpServer');
         
         // Start services
         tcpServer.start();
         MaintenanceService.purgeOldData();
-        IrrigationService.startMonitoring();
+        //IrrigationService.startMonitoring();
 
         // Schedule maintenance
         setInterval(() => {
@@ -59,7 +59,6 @@ sequelize.sync().then(async () => {
     }
 
     const port = process.env.PORT || 3000;
-    console.log(`HTTP Port = ${port}`);
     app.listen(port, '0.0.0.0', () => {
         logger.info(`Backend API server started on port ${port}.`);
     });
